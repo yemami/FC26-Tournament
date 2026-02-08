@@ -12,8 +12,14 @@ import { generateRoundRobinSchedule } from '../lib/roundRobin'
 import { computeStandings } from '../lib/standings'
 import { getTiedPairs } from '../lib/tieBreak'
 import { determineElimination } from '../lib/elimination'
-
-const STORAGE_KEY = 'fc26-tournament'
+import {
+  loadTournamentState,
+  savePlayers,
+  saveMatches,
+  saveTournamentConfig,
+  resetTournament as resetTournamentInDB,
+  migrateFromLocalStorage,
+} from '../lib/supabaseService'
 
 interface TournamentState {
   players: Player[]
@@ -24,29 +30,8 @@ interface TournamentState {
   knockoutSeeds: string[] | null
   /** Track eliminations per round for odd number of players */
   roundEliminations: RoundElimination[]
-}
-
-function loadState(): TournamentState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { players: [], matches: [], knockoutPlayerCount: null, knockoutSeeds: null, roundEliminations: [] }
-    const data = JSON.parse(raw) as TournamentState
-    return {
-      players: Array.isArray(data.players) ? data.players : [],
-      matches: Array.isArray(data.matches) ? data.matches : [],
-      knockoutPlayerCount: typeof data.knockoutPlayerCount === 'number' && data.knockoutPlayerCount >= 2 ? data.knockoutPlayerCount : null,
-      knockoutSeeds: Array.isArray(data.knockoutSeeds) && data.knockoutSeeds.length > 0 ? data.knockoutSeeds : null,
-      roundEliminations: Array.isArray(data.roundEliminations) ? data.roundEliminations : [],
-    }
-  } catch {
-    return { players: [], matches: [], knockoutPlayerCount: null, knockoutSeeds: null, roundEliminations: [] }
-  }
-}
-
-function saveState(state: TournamentState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch (_) {}
+  /** Track if we've attempted migration */
+  migrationAttempted: boolean
 }
 
 const SAMPLE_PLAYER_NAMES = ['abel', 'sime', 'teda', 'gedi', 'alazar', 'beki', 'haftish', 'minalu']
@@ -54,6 +39,7 @@ const SAMPLE_PLAYER_NAMES = ['abel', 'sime', 'teda', 'gedi', 'alazar', 'beki', '
 type TournamentContextValue = {
   players: Player[]
   matches: Match[]
+  isLoading: boolean
   addPlayer: (name: string) => void
   removePlayer: (id: string) => void
   shufflePlayers: () => void
@@ -77,16 +63,85 @@ type TournamentContextValue = {
 
 const TournamentContext = createContext<TournamentContextValue | null>(null)
 
-function makeId() {
-  return Math.random().toString(36).slice(2, 11)
+function makeId(): string {
+  // Generate a UUID-like ID for Supabase compatibility
+  // Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
 }
 
 export function TournamentProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<TournamentState>(loadState)
+  const [state, setState] = useState<TournamentState>({
+    players: [],
+    matches: [],
+    knockoutPlayerCount: null,
+    knockoutSeeds: null,
+    roundEliminations: [],
+    migrationAttempted: false,
+  })
+  const [isLoading, setIsLoading] = useState(true)
 
+  // Load initial state from Supabase
   useEffect(() => {
-    saveState(state)
-  }, [state])
+    let mounted = true
+    async function initialize() {
+      try {
+        // Try to migrate from localStorage first (only once)
+        const migrationKey = 'fc26-migration-complete'
+        const hasMigrated = localStorage.getItem(migrationKey)
+        if (!hasMigrated) {
+          await migrateFromLocalStorage()
+          localStorage.setItem(migrationKey, 'true')
+        }
+
+        // Load from Supabase
+        const loadedState = await loadTournamentState()
+        if (mounted) {
+          setState({
+            ...loadedState,
+            migrationAttempted: true,
+          })
+        }
+      } catch (error) {
+        console.error('Failed to initialize tournament state:', error)
+      } finally {
+        if (mounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    initialize()
+    return () => {
+      mounted = false
+    }
+  }, []) // Only run once on mount
+
+  // Save to Supabase whenever state changes (debounced)
+  useEffect(() => {
+    if (isLoading) return
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        await Promise.all([
+          savePlayers(state.players),
+          saveMatches(state.matches),
+          saveTournamentConfig(
+            state.knockoutPlayerCount,
+            state.knockoutSeeds,
+            state.roundEliminations
+          ),
+        ])
+      } catch (error) {
+        console.error('Failed to save tournament state:', error)
+      }
+    }, 500) // Debounce by 500ms
+
+    return () => clearTimeout(timeoutId)
+  }, [state.players, state.matches, state.knockoutPlayerCount, state.knockoutSeeds, state.roundEliminations, isLoading])
 
   const addPlayer = useCallback((name: string) => {
     const trimmed = name.trim()
@@ -378,8 +433,16 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const resetTournament = useCallback(() => {
-    setState((s) => ({ ...s, matches: [], knockoutSeeds: null, knockoutPlayerCount: null, roundEliminations: [] }))
+  const resetTournament = useCallback(async () => {
+    await resetTournamentInDB()
+    setState((s) => ({ 
+      ...s, 
+      players: [],
+      matches: [], 
+      knockoutSeeds: null, 
+      knockoutPlayerCount: null, 
+      roundEliminations: [] 
+    }))
   }, [])
 
   const setKnockoutPlayerCount = useCallback((count: number) => {
@@ -856,6 +919,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     () => ({
       players: state.players,
       matches: state.matches,
+      isLoading,
       addPlayer,
       removePlayer,
       shufflePlayers,
