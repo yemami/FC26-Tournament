@@ -8,8 +8,10 @@ import { KnockoutBracket } from './components/KnockoutBracket'
 import { Podium } from './components/Podium'
 
 function AppContent() {
-  const { matches, resetTournament } = useTournament()
+  const { matches, isLoading, resetTournament } = useTournament()
   const [showKey, setShowKey] = useState(false)
+  // Show tournament view only if matches exist (tournament has started)
+  // If no matches exist, show setup page (even if players exist - they can be added before starting)
   const inTournament = matches.length > 0
 
   return (
@@ -44,7 +46,14 @@ function AppContent() {
         </div>
       </header>
       <main className="mx-auto max-w-4xl p-4">
-        {inTournament ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-600 border-t-violet-600"></div>
+              <p className="text-slate-400">Loading tournament...</p>
+            </div>
+          </div>
+        ) : inTournament ? (
           <TournamentView />
         ) : (
           <SetupView />
