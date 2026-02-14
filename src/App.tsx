@@ -112,6 +112,7 @@ function AppContent() {
         isOpen={showResetDialog}
         onConfirm={handleResetConfirm}
         onCancel={() => setShowResetDialog(false)}
+        testMode={testMode}
       />
       <ResetHistory
         isOpen={showResetHistory}

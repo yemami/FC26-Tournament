@@ -5,9 +5,10 @@ interface ResetConfirmationDialogProps {
   isOpen: boolean
   onConfirm: (cityName: string) => void
   onCancel: () => void
+  testMode?: boolean
 }
 
-export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel }: ResetConfirmationDialogProps) {
+export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel, testMode = false }: ResetConfirmationDialogProps) {
   const [isRequestingLocation, setIsRequestingLocation] = useState(false)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [locationDenied, setLocationDenied] = useState(false)
@@ -15,6 +16,12 @@ export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel }: ResetCo
   if (!isOpen) return null
 
   const handleConfirm = async () => {
+    // In test mode, skip location requirement
+    if (testMode) {
+      onConfirm('Test Mode')
+      return
+    }
+
     setIsRequestingLocation(true)
     setLocationError(null)
     setLocationDenied(false)
@@ -92,18 +99,27 @@ export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel }: ResetCo
           <li>Clear all tournament data</li>
           <li>This action cannot be undone</li>
         </ul>
-        <div className="mb-4 rounded-card bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
-          <p className="text-sm text-red-700 dark:text-red-300 font-semibold">
-            ⚠️ Location sharing is REQUIRED to reset the tournament. This helps track who performed the reset. Reset cannot proceed without location access.
-          </p>
-        </div>
+        {!testMode && (
+          <div className="mb-4 rounded-card bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
+            <p className="text-sm text-red-700 dark:text-red-300 font-semibold">
+              ⚠️ Location sharing is REQUIRED to reset the tournament. This helps track who performed the reset. Reset cannot proceed without location access.
+            </p>
+          </div>
+        )}
+        {testMode && (
+          <div className="mb-4 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
+            <p className="text-sm text-amber-700 dark:text-amber-300 font-semibold">
+              🧪 Test Mode: Location requirement is bypassed for local testing.
+            </p>
+          </div>
+        )}
         {locationError && (
           <div className="mb-4 rounded-card border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
             <p className="text-sm text-red-700 dark:text-red-300 font-medium">{locationError}</p>
           </div>
         )}
         <div className="flex flex-wrap gap-3">
-          {locationDenied ? (
+          {!testMode && locationDenied ? (
             <button
               type="button"
               onClick={onCancel}
