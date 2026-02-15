@@ -43,13 +43,18 @@ function getMatchTypeBadge(match: Match) {
   )
 }
 
-/** Get date key (YYYY-MM-DD) for grouping; use updated_at (when played) or created_at */
+/** Get date key (YYYY-MM-DD) in user's local timezone for grouping and filtering */
 function getDateKey(match: Match): string {
   const ts = match.updated_at || match.created_at
   if (ts) {
-    return ts.split('T')[0]
+    const d = new Date(ts)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
   }
-  return new Date().toISOString().split('T')[0]
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
 /** Format exact time for display (e.g. "3:45 PM" or "Feb 7, 3:45 PM") */
@@ -69,10 +74,12 @@ function formatMatchTime(isoString: string | undefined): string {
 function formatDateLabel(dateKey: string): string {
   const d = new Date(dateKey + 'T12:00:00')
   const today = new Date()
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
-  if (dateKey === today.toISOString().split('T')[0]) return 'Today'
-  if (dateKey === yesterday.toISOString().split('T')[0]) return 'Yesterday'
+  const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
+  if (dateKey === todayKey) return 'Today'
+  if (dateKey === yesterdayKey) return 'Yesterday'
   return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
 
@@ -83,6 +90,7 @@ export function MatchHistory({ isOpen, onClose }: MatchHistoryProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set())
   const [hasInitialExpand, setHasInitialExpand] = useState(false)
+  const [dateFilter, setDateFilter] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -115,7 +123,7 @@ export function MatchHistory({ isOpen, onClose }: MatchHistoryProps) {
   historicalMatches.forEach((m, idx) => recencyMap.set(m.id, idx))
   const currentMatchIds = new Set(currentMatches.map((m) => m.id))
 
-  const playedMatches = allMatches
+  let playedMatches = allMatches
     .filter((m) => m.scoreA !== null && m.scoreB !== null)
     .sort((a, b) => {
       const aCurrent = currentMatchIds.has(a.id)
@@ -126,6 +134,10 @@ export function MatchHistory({ isOpen, onClose }: MatchHistoryProps) {
       const bIdx = recencyMap.get(b.id) ?? 999999
       return aIdx - bIdx
     })
+
+  if (dateFilter) {
+    playedMatches = playedMatches.filter((m) => getDateKey(m) === dateFilter)
+  }
 
   const byDate = new Map<string, Match[]>()
   for (const m of playedMatches) {
@@ -170,6 +182,27 @@ export function MatchHistory({ isOpen, onClose }: MatchHistoryProps) {
           </button>
         </div>
 
+        <div className="border-b border-gray-200 dark:border-gray-700 px-5 py-4 bg-gray-50 dark:bg-gray-800/50">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Filter by date</label>
+            <input
+              type="date"
+              value={dateFilter ?? ''}
+              onChange={(e) => setDateFilter(e.target.value || null)}
+              className="rounded-button border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 focus:border-neobank-lime focus:outline-none transition-colors"
+            />
+            {dateFilter && (
+              <button
+                type="button"
+                onClick={() => setDateFilter(null)}
+                className="rounded-button bg-gray-200 dark:bg-gray-600 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+              >
+                Show all
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-5">
           {isLoading && (
             <div className="flex items-center justify-center py-12">
@@ -179,17 +212,41 @@ export function MatchHistory({ isOpen, onClose }: MatchHistoryProps) {
 
           {!isLoading && playedMatches.length === 0 && (
             <div className="text-center py-12">
-              <p className="text-gray-500 dark:text-gray-400 font-medium">No completed matches yet.</p>
-              <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-                Play some matches and they will appear here.
-              </p>
+              {dateFilter ? (
+                <>
+                  <p className="text-gray-500 dark:text-gray-400 font-medium">No matches on {formatDateLabel(dateFilter)}.</p>
+                  <button
+                    type="button"
+                    onClick={() => setDateFilter(null)}
+                    className="mt-3 text-sm font-medium text-neobank-lime hover:text-neobank-lime-dark transition-colors"
+                  >
+                    Show all matches
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-500 dark:text-gray-400 font-medium">No completed matches yet.</p>
+                  <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
+                    Play some matches and they will appear here.
+                  </p>
+                </>
+              )}
             </div>
           )}
 
           {!isLoading && playedMatches.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                {playedMatches.length} match{playedMatches.length !== 1 ? 'es' : ''} played (most recent first)
+                {dateFilter ? (
+                  <>
+                    {playedMatches.length} match{playedMatches.length !== 1 ? 'es' : ''} on{' '}
+                    {formatDateLabel(dateFilter)}
+                  </>
+                ) : (
+                  <>
+                    {playedMatches.length} match{playedMatches.length !== 1 ? 'es' : ''} played (most recent first)
+                  </>
+                )}
               </p>
               {dateKeys.map((dateKey) => {
                 const matches = byDate.get(dateKey) ?? []

@@ -45,8 +45,9 @@ const SAMPLE_PLAYER_NAMES = ['abel', 'sime', 'teda', 'gedi', 'alazar', 'beki', '
 type TournamentContextValue = {
   players: Player[]
   matches: Match[]
+  availablePlayers: Player[]
   isLoading: boolean
-  addPlayer: (name: string) => void | Promise<void>
+  selectPlayer: (playerId: string) => void
   removePlayer: (id: string) => void
   shufflePlayers: () => void
   loadSamplePlayers: () => void
@@ -169,23 +170,14 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timeoutId)
   }, [state.players, state.matches, state.knockoutPlayerCount, state.knockoutSeeds, state.roundEliminations, isLoading])
 
-  const addPlayer = useCallback(async (name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    // Reuse existing player by name to avoid duplicates (e.g. "Abel" every tournament)
-    const existing = await findPlayerByName(trimmed)
-    if (existing) {
-      setState((s) => {
-        if (s.players.some((p) => p.id === existing.id || p.name.toLowerCase() === trimmed.toLowerCase())) return s
-        return { ...s, players: [...s.players, existing] }
-      })
-    } else {
-      setState((s) => ({
-        ...s,
-        players: [...s.players, { id: makeId(), name: trimmed }],
-      }))
-    }
-  }, [])
+  const selectPlayer = useCallback((playerId: string) => {
+    const player = historicalPlayers.find((p) => p.id === playerId)
+    if (!player) return
+    setState((s) => {
+      if (s.players.some((p) => p.id === playerId)) return s
+      return { ...s, players: [...s.players, player] }
+    })
+  }, [historicalPlayers])
 
   const removePlayer = useCallback((id: string) => {
     setState((s) => ({
@@ -1077,8 +1069,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     () => ({
       players: state.players,
       matches: state.matches,
+      availablePlayers: historicalPlayers,
       isLoading,
-      addPlayer,
+      selectPlayer,
       removePlayer,
       shufflePlayers,
       loadSamplePlayers,
@@ -1104,10 +1097,11 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     [
       state.players,
       state.matches,
+      historicalPlayers,
       state.knockoutPlayerCount,
       state.knockoutSeeds,
       getMatchPrediction,
-      addPlayer,
+      selectPlayer,
       removePlayer,
       shufflePlayers,
       loadSamplePlayers,
