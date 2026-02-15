@@ -43,12 +43,26 @@ function getMatchTypeBadge(match: Match) {
   )
 }
 
-/** Get date key (YYYY-MM-DD) for grouping; current matches use today */
+/** Get date key (YYYY-MM-DD) for grouping; use updated_at (when played) or created_at */
 function getDateKey(match: Match): string {
-  if (match.created_at) {
-    return match.created_at.split('T')[0]
+  const ts = match.updated_at || match.created_at
+  if (ts) {
+    return ts.split('T')[0]
   }
   return new Date().toISOString().split('T')[0]
+}
+
+/** Format exact time for display (e.g. "3:45 PM" or "Feb 7, 3:45 PM") */
+function formatMatchTime(isoString: string | undefined): string {
+  if (!isoString) return ''
+  const d = new Date(isoString)
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
 }
 
 /** Format date for display */
@@ -223,8 +237,11 @@ export function MatchHistory({ isOpen, onClose }: MatchHistoryProps) {
                                     {getPlayerName(match.playerBId)}
                                   </span>
                                 </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                  {getMatchTypeLabel(match)}
+                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex flex-wrap gap-x-3 gap-y-0">
+                                  <span>{getMatchTypeLabel(match)}</span>
+                                  {formatMatchTime(match.updated_at || match.created_at) && (
+                                    <span>{formatMatchTime(match.updated_at || match.created_at)}</span>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex gap-2">{getMatchTypeBadge(match)}</div>

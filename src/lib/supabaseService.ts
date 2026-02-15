@@ -79,7 +79,7 @@ export async function loadAllHistoricalMatches(): Promise<Match[]> {
       .select('*')
       .not('score_a', 'is', null)
       .not('score_b', 'is', null)
-      .order('created_at', { ascending: false })
+      .order('updated_at', { ascending: false })
 
     if (error) {
       console.error('Error loading historical matches:', error)
@@ -104,6 +104,7 @@ export async function loadAllHistoricalMatches(): Promise<Match[]> {
       isGoldenGoal: m.is_golden_goal,
       stage: m.stage as 'play_in' | 'semi' | 'final' | 'third_place' | undefined,
       created_at: m.created_at as string | undefined,
+      updated_at: m.updated_at as string | undefined,
     }))
   } catch (error) {
     console.error('Failed to load historical matches:', error)

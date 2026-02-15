@@ -69,8 +69,21 @@ export function HeadToHead({ isOpen, onClose }: HeadToHeadProps) {
   const matchTypeStats = stats ? getMatchTypeStats(stats) : null
 
   // Group head-to-head matches by date for accordion
-  const getDateKey = (match: Match) =>
-    match.created_at ? match.created_at.split('T')[0] : new Date().toISOString().split('T')[0]
+  const getDateKey = (match: Match) => {
+    const ts = match.updated_at || match.created_at
+    return ts ? ts.split('T')[0] : new Date().toISOString().split('T')[0]
+  }
+  const formatMatchTime = (isoString: string | undefined) => {
+    if (!isoString) return ''
+    const d = new Date(isoString)
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+  }
   const formatDateLabel = (dateKey: string) => {
     const d = new Date(dateKey + 'T12:00:00')
     const today = new Date()
@@ -363,10 +376,15 @@ export function HeadToHead({ isOpen, onClose }: HeadToHeadProps) {
                                       </span>
                                       <span className="font-semibold text-gray-900 dark:text-gray-100">{playerBName}</span>
                                     </div>
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                      {matchType === 'group' && `Round ${roundIndex + 1}`}
-                                      {matchType === 'knockout' && stage && `${stageLabels[stage]} (Round ${roundIndex + 1})`}
-                                      {matchType === 'golden_goal' && 'Golden Goal Playoff'}
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex flex-wrap gap-x-3 gap-y-0">
+                                      <span>
+                                        {matchType === 'group' && `Round ${roundIndex + 1}`}
+                                        {matchType === 'knockout' && stage && `${stageLabels[stage]} (Round ${roundIndex + 1})`}
+                                        {matchType === 'golden_goal' && 'Golden Goal Playoff'}
+                                      </span>
+                                      {(match.updated_at || match.created_at) && (
+                                        <span>{formatMatchTime(match.updated_at || match.created_at)}</span>
+                                      )}
                                     </div>
                                   </div>
                                   <div className="flex gap-2">
