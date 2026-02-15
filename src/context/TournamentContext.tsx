@@ -16,7 +16,10 @@ import {
   loadTournamentState,
   loadAllHistoricalMatches,
   getHistoricalPlayers,
-  findPlayerByName,
+  seedSamplePlayersIfEmpty,
+  addPlayerToDatabase,
+  findSimilarPlayers,
+  type AddPlayerResult,
   savePlayers,
   saveMatches,
   saveTournamentConfig,
@@ -40,19 +43,21 @@ interface TournamentState {
   migrationAttempted: boolean
 }
 
-const SAMPLE_PLAYER_NAMES = ['abel', 'sime', 'teda', 'gedi', 'alazar', 'beki', 'haftish', 'minalu']
-
 type TournamentContextValue = {
   players: Player[]
   matches: Match[]
   availablePlayers: Player[]
   isLoading: boolean
   selectPlayer: (playerId: string) => void
+  addPlayerToDatabase: (name: string) => Promise<AddPlayerResult>
+  findSimilarPlayers: (name: string) => Promise<Player[]>
+  refreshAvailablePlayers: () => Promise<void>
   removePlayer: (id: string) => void
   shufflePlayers: () => void
   loadSamplePlayers: () => void
   startTournament: () => void | Promise<void>
   setMatchScore: (matchId: string, scoreA: number, scoreB: number) => void | Promise<void>
+  setMatchComment: (matchId: string, comment: string) => void
   resetTournament: (cityName: string) => Promise<void>
   endTournament: () => Promise<void>
   rematch: () => Promise<void>
@@ -115,13 +120,15 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           loadAllHistoricalMatches(),
           getHistoricalPlayers(),
         ])
+        await seedSamplePlayersIfEmpty()
+        const finalPlayers = histPlayers.length === 0 ? await getHistoricalPlayers() : histPlayers
         if (mounted) {
           setState({
             ...loadedState,
             migrationAttempted: true,
           })
           setHistoricalMatches(historical)
-          setHistoricalPlayers(histPlayers)
+          setHistoricalPlayers(finalPlayers)
         }
       } catch (error) {
         console.error('Failed to initialize tournament state:', error)
@@ -179,6 +186,23 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     })
   }, [historicalPlayers])
 
+  const addPlayerToDatabaseCb = useCallback(async (name: string): Promise<AddPlayerResult> => {
+    const result = await addPlayerToDatabase(name)
+    if (result) {
+      const { player } = result
+      setHistoricalPlayers((prev) => {
+        if (prev.some((p) => p.id === player.id || p.name.toLowerCase() === player.name.toLowerCase())) return prev
+        return [...prev, player]
+      })
+    }
+    return result
+  }, [])
+
+  const refreshAvailablePlayers = useCallback(async () => {
+    const players = await getHistoricalPlayers()
+    setHistoricalPlayers(players)
+  }, [])
+
   const removePlayer = useCallback((id: string) => {
     setState((s) => ({
       ...s,
@@ -202,18 +226,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const loadSamplePlayers = useCallback(async () => {
-    const resolved: Player[] = []
-    for (const name of SAMPLE_PLAYER_NAMES) {
-      const existing = await findPlayerByName(name)
-      if (existing) {
-        if (!resolved.some((p) => p.id === existing.id || p.name.toLowerCase() === name.toLowerCase())) {
-          resolved.push(existing)
-        }
-      } else {
-        resolved.push({ id: makeId(), name })
-      }
-    }
-    setState((s) => ({ ...s, players: resolved, matches: [] }))
+    const allPlayers = await getHistoricalPlayers()
+    setState((s) => ({ ...s, players: allPlayers, matches: [] }))
   }, [])
 
   const startTournament = useCallback(async () => {
@@ -470,6 +484,15 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }
       return next
     })
+  }, [])
+
+  const setMatchComment = useCallback((matchId: string, comment: string) => {
+    setState((s) => ({
+      ...s,
+      matches: s.matches.map((m) =>
+        m.id === matchId ? { ...m, comment: comment.trim() || undefined } : m
+      ),
+    }))
   }, [])
 
   const resetTournament = useCallback(async (cityName: string) => {
@@ -1072,11 +1095,15 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       availablePlayers: historicalPlayers,
       isLoading,
       selectPlayer,
+      addPlayerToDatabase: addPlayerToDatabaseCb,
+      findSimilarPlayers,
+      refreshAvailablePlayers,
       removePlayer,
       shufflePlayers,
       loadSamplePlayers,
       startTournament,
       setMatchScore,
+      setMatchComment,
       resetTournament,
       endTournament,
       rematch,
@@ -1097,16 +1124,21 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     [
       state.players,
       state.matches,
-      historicalPlayers,
       state.knockoutPlayerCount,
       state.knockoutSeeds,
+      historicalPlayers,
+      isLoading,
       getMatchPrediction,
       selectPlayer,
+      addPlayerToDatabaseCb,
+      findSimilarPlayers,
+      refreshAvailablePlayers,
       removePlayer,
       shufflePlayers,
       loadSamplePlayers,
       startTournament,
       setMatchScore,
+      setMatchComment,
       resetTournament,
       endTournament,
       rematch,

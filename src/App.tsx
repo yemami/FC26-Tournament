@@ -11,6 +11,7 @@ import { NewMatchDialog } from './components/NewMatchDialog'
 import { ResetHistory } from './components/ResetHistory'
 import { HeadToHead } from './components/HeadToHead'
 import { MatchHistory } from './components/MatchHistory'
+import { Records } from './components/Records'
 import { useDarkMode } from './hooks/useDarkMode'
 
 function AppContent() {
@@ -23,6 +24,7 @@ function AppContent() {
   const [showResetHistory, setShowResetHistory] = useState(false)
   const [showHeadToHead, setShowHeadToHead] = useState(false)
   const [showMatchHistory, setShowMatchHistory] = useState(false)
+  const [showRecords, setShowRecords] = useState(false)
   // Show tournament view only if matches exist (tournament has started)
   // If no matches exist, show setup page (even if players exist - they can be added before starting)
   const inTournament = matches.length > 0
@@ -106,6 +108,13 @@ function AppContent() {
               >
                 Match History
               </button>
+              <button
+                type="button"
+                onClick={() => setShowRecords(true)}
+                className="rounded-button bg-gray-100 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                Records
+              </button>
               {inTournament && tournamentComplete && (
                 <>
                   <button
@@ -181,6 +190,10 @@ function AppContent() {
       <MatchHistory
         isOpen={showMatchHistory}
         onClose={() => setShowMatchHistory(false)}
+      />
+      <Records
+        isOpen={showRecords}
+        onClose={() => setShowRecords(false)}
       />
     </div>
   )

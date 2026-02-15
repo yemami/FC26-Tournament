@@ -386,6 +386,9 @@ export function HeadToHead({ isOpen, onClose }: HeadToHeadProps) {
                                         <span>{formatMatchTime(match.updated_at || match.created_at)}</span>
                                       )}
                                     </div>
+                                    {match.comment && (
+                                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 italic">&quot;{match.comment}&quot;</p>
+                                    )}
                                   </div>
                                   <div className="flex gap-2">
                                     {matchType === 'group' && (

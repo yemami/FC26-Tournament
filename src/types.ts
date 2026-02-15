@@ -22,6 +22,8 @@ export interface Match {
   created_at?: string
   /** When the match was played (score entered); used for exact time display */
   updated_at?: string
+  /** Optional comment after match (e.g. complaints, banter) */
+  comment?: string
 }
 
 export interface KnockoutResults {

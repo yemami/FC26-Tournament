@@ -105,9 +105,89 @@ export async function loadAllHistoricalMatches(): Promise<Match[]> {
       stage: m.stage as 'play_in' | 'semi' | 'final' | 'third_place' | undefined,
       created_at: m.created_at as string | undefined,
       updated_at: m.updated_at as string | undefined,
+      comment: (m as { comment?: string }).comment ?? undefined,
     }))
   } catch (error) {
     console.error('Failed to load historical matches:', error)
+    return []
+  }
+}
+
+const SAMPLE_PLAYER_NAMES = ['abel', 'sime', 'teda', 'gedi', 'alazar', 'beki', 'haftish', 'minalu']
+
+function makeId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
+/**
+ * Seed sample players into the database if it's empty.
+ * Runs on app init so new users have players to select from.
+ */
+export async function seedSamplePlayersIfEmpty(): Promise<void> {
+  try {
+    const { data: existing } = await supabase.from('players').select('id').limit(1)
+    if (existing && existing.length > 0) return
+
+    const toInsert = SAMPLE_PLAYER_NAMES.map((name) => ({
+      id: makeId(),
+      name,
+    }))
+    await supabase.from('players').insert(toInsert)
+    console.log('Seeded sample players to database')
+  } catch (error) {
+    console.error('Failed to seed sample players:', error)
+  }
+}
+
+export type AddPlayerResult = { player: Player; isNew: boolean } | null
+
+/**
+ * Add a new player to the database.
+ * Returns { player, isNew } if successful, null if failed.
+ * isNew is false when the player already existed.
+ */
+export async function addPlayerToDatabase(name: string): Promise<AddPlayerResult> {
+  try {
+    const trimmed = name.trim()
+    if (!trimmed) return null
+    const existing = await findPlayerByName(trimmed)
+    if (existing) return { player: existing, isNew: false }
+
+    const player: Player = { id: makeId(), name: trimmed }
+    await supabase.from('players').insert({ id: player.id, name: player.name })
+    return { player, isNew: true }
+  } catch (error) {
+    console.error('Failed to add player to database:', error)
+    return null
+  }
+}
+
+/**
+ * Find players with similar names (one contains the other, case-insensitive).
+ * Excludes exact matches. Used to warn about potential duplicates.
+ */
+export async function findSimilarPlayers(name: string): Promise<Player[]> {
+  try {
+    const trimmed = name.trim().toLowerCase()
+    if (!trimmed) return []
+    const { data, error } = await supabase
+      .from('players')
+      .select('id, name')
+      .order('name')
+
+    if (error || !data) return []
+    return data
+      .filter((p) => {
+        const existing = p.name.toLowerCase()
+        if (existing === trimmed) return false // exact match excluded
+        return existing.includes(trimmed) || trimmed.includes(existing)
+      })
+      .map((p) => ({ id: p.id, name: p.name }))
+  } catch {
     return []
   }
 }
@@ -262,6 +342,7 @@ export async function loadTournamentState(): Promise<{
       status: m.status as 'pending' | 'played' | 'golden_goal',
       isGoldenGoal: m.is_golden_goal,
       stage: m.stage as 'play_in' | 'semi' | 'final' | 'third_place' | undefined,
+      comment: (m as { comment?: string }).comment ?? undefined,
     }))
 
     return {
@@ -372,6 +453,7 @@ export async function saveMatches(matches: Match[], preserveExisting: boolean = 
           status: m.status,
           is_golden_goal: m.isGoldenGoal || false,
           stage: m.stage || null,
+          comment: m.comment || null,
         }))
       )
       if (insertError) {
@@ -392,6 +474,7 @@ export async function saveMatches(matches: Match[], preserveExisting: boolean = 
           status: match.status,
           is_golden_goal: match.isGoldenGoal || false,
           stage: match.stage || null,
+          comment: match.comment || null,
         })
         .eq('id', match.id)
     }

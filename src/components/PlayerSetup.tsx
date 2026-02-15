@@ -1,44 +1,83 @@
+import { useState } from 'react'
 import { useTournament } from '../context/TournamentContext'
-import { getUniquePlayerNames } from '../lib/headToHead'
+import { AddPlayerModal } from './AddPlayerModal'
 
 export function PlayerSetup() {
-  const { players, availablePlayers, selectPlayer, removePlayer, shufflePlayers, loadSamplePlayers, startTournament } = useTournament()
+  const {
+    players,
+    availablePlayers,
+    selectPlayer,
+    removePlayer,
+    shufflePlayers,
+    loadSamplePlayers,
+    addPlayerToDatabase,
+    refreshAvailablePlayers,
+    startTournament,
+  } = useTournament()
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [selectedId, setSelectedId] = useState('')
 
-  const uniqueByName = getUniquePlayerNames(availablePlayers)
-  const selectedIds = new Set(players.map((p) => p.id))
-  const selectablePlayers = uniqueByName.map(({ name }) =>
-    availablePlayers.find((p) => p.name.trim().toLowerCase() === name.toLowerCase())
-  ).filter((p): p is NonNullable<typeof p> => !!p)
+  const rosterIds = new Set(players.map((p) => p.id))
+  const playersNotInRoster = availablePlayers.filter((p) => !rosterIds.has(p.id))
+
+  const handleAddSelected = () => {
+    if (selectedId) {
+      selectPlayer(selectedId)
+      setSelectedId('')
+    }
+  }
+
+  const handleAddNewPlayer = async (name: string) => {
+    const result = await addPlayerToDatabase(name)
+    if (result) await refreshAvailablePlayers()
+    return result
+  }
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-card shadow-card dark:shadow-none dark:border dark:border-gray-700 p-6 space-y-6 transition-colors">
       <div className="flex flex-wrap items-center gap-2">
         <select
-          value=""
-          onChange={(e) => {
-            const id = e.target.value
-            if (id) selectPlayer(id)
-            e.target.value = ''
-          }}
-          className="rounded-button border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-gray-900 dark:text-gray-100 focus:border-neobank-lime focus:outline-none transition-colors min-w-[180px]"
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          className="flex-1 min-w-[200px] rounded-button border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-gray-900 dark:text-gray-100 focus:border-neobank-lime focus:outline-none transition-colors"
         >
-          <option value="">Select player to add</option>
-          {selectablePlayers
-            .filter((p) => !selectedIds.has(p.id))
-            .map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+          <option value="">Select a player from database</option>
+          {playersNotInRoster.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
         </select>
+        <button
+          type="button"
+          onClick={handleAddSelected}
+          disabled={!selectedId}
+          className="rounded-button bg-neobank-lime px-6 py-2.5 font-semibold text-white hover:bg-neobank-lime-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          Add to roster
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="rounded-button bg-gray-100 dark:bg-gray-700 px-4 py-2.5 font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+        >
+          Add new player to database
+        </button>
         <button
           type="button"
           onClick={loadSamplePlayers}
           className="rounded-button bg-gray-100 dark:bg-gray-700 px-4 py-2.5 font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
         >
-          Load sample players
+          Load all players
         </button>
       </div>
+
+      <AddPlayerModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAdd={handleAddNewPlayer}
+        existingPlayers={availablePlayers}
+      />
 
       {players.length > 0 && (
         <>
@@ -86,12 +125,7 @@ export function PlayerSetup() {
 
       {players.length < 2 && players.length > 0 && (
         <div className="rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
-          <p className="text-amber-700 dark:text-amber-300 font-medium">Select at least 2 players to start the tournament.</p>
-        </div>
-      )}
-      {availablePlayers.length === 0 && players.length === 0 && (
-        <div className="rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
-          <p className="text-amber-700 dark:text-amber-300 font-medium">No players yet. Click &quot;Load sample players&quot; to add your friends.</p>
+          <p className="text-amber-700 dark:text-amber-300 font-medium">Add at least 2 players to start the tournament.</p>
         </div>
       )}
     </div>
