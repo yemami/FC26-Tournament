@@ -89,20 +89,19 @@ export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel, testMode 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/70 p-4">
       <div className="w-full max-w-md rounded-card bg-white dark:bg-gray-800 p-6 shadow-xl border border-gray-200 dark:border-gray-700 transition-colors">
-        <h2 className="mb-4 text-xl font-bold text-gray-900 dark:text-gray-100">⚠️ Reset Tournament</h2>
+        <h2 className="mb-4 text-xl font-bold text-gray-900 dark:text-gray-100">⚠️ Start with New Players</h2>
         <p className="mb-4 text-gray-700 dark:text-gray-300 font-medium">
-          Are you sure you want to reset the tournament? This will:
+          This will clear the current tournament and take you to the setup page to add new players. Match history will be preserved.
         </p>
         <ul className="mb-4 ml-6 list-disc space-y-2 text-sm text-gray-600 dark:text-gray-400">
-          <li>Delete all players</li>
-          <li>Delete all matches</li>
-          <li>Clear all tournament data</li>
-          <li>This action cannot be undone</li>
+          <li>Clear current players and matches</li>
+          <li>Go to setup to add new players</li>
+          <li>Match history and head-to-head records are preserved</li>
         </ul>
         {!testMode && (
           <div className="mb-4 rounded-card bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
             <p className="text-sm text-red-700 dark:text-red-300 font-semibold">
-              ⚠️ Location sharing is REQUIRED to reset the tournament. This helps track who performed the reset. Reset cannot proceed without location access.
+              ⚠️ Location sharing is REQUIRED. This helps track who started a new tournament. Cannot proceed without location access.
             </p>
           </div>
         )}
@@ -135,7 +134,7 @@ export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel, testMode 
                 disabled={isRequestingLocation}
                 className="flex-1 rounded-button bg-red-500 dark:bg-red-600 px-4 py-2.5 font-semibold text-white hover:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
               >
-                {isRequestingLocation ? 'Getting location...' : 'Yes, Reset'}
+                {isRequestingLocation ? 'Getting location...' : 'Continue'}
               </button>
               <button
                 type="button"

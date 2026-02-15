@@ -8,7 +8,7 @@ const ACTIVE_TOURNAMENT_ID_KEY = 'fc26-active-tournament-id'
  * Prefers localStorage (e.g. after end/reset we set a new tournament) so we don't reuse old tournaments.
  * Falls back to most recent match/tournament for sync across browsers.
  */
-async function getActiveTournamentId(): Promise<string | null> {
+export async function getActiveTournamentId(): Promise<string | null> {
   // Check localStorage FIRST - after end/reset we create a new tournament and set it here
   // This ensures we use the new tournament instead of reusing the old one
   const storedId = localStorage.getItem(ACTIVE_TOURNAMENT_ID_KEY)
@@ -338,7 +338,7 @@ export async function saveMatches(matches: Match[], preserveExisting: boolean = 
     // Insert new matches
     const newMatches = matches.filter((m) => !existingIds.has(m.id))
     if (newMatches.length > 0) {
-      await supabase.from('matches').insert(
+      const { error: insertError } = await supabase.from('matches').insert(
         newMatches.map((m) => ({
           id: m.id,
           tournament_id: tournamentId,
@@ -352,6 +352,9 @@ export async function saveMatches(matches: Match[], preserveExisting: boolean = 
           stage: m.stage || null,
         }))
       )
+      if (insertError) {
+        console.error('Failed to insert matches (possible duplicate IDs):', insertError)
+      }
     }
 
     // Update existing matches

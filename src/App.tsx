@@ -7,17 +7,19 @@ import { GoldenGoalPlayoff } from './components/GoldenGoalPlayoff'
 import { KnockoutBracket } from './components/KnockoutBracket'
 import { Podium } from './components/Podium'
 import { ResetConfirmationDialog } from './components/ResetConfirmationDialog'
+import { NewMatchDialog } from './components/NewMatchDialog'
 import { ResetHistory } from './components/ResetHistory'
 import { HeadToHead } from './components/HeadToHead'
 import { MatchHistory } from './components/MatchHistory'
 import { useDarkMode } from './hooks/useDarkMode'
 
 function AppContent() {
-  const { matches, isLoading, resetTournament, endTournament, knockoutResults } = useTournament()
+  const { matches, isLoading, resetTournament, rematch, knockoutResults } = useTournament()
   const { isDark, toggle: toggleDarkMode } = useDarkMode()
   const [showKey, setShowKey] = useState(false)
   const [testMode, setTestMode] = useState(false)
   const [showResetDialog, setShowResetDialog] = useState(false)
+  const [showNewMatchDialog, setShowNewMatchDialog] = useState(false)
   const [showResetHistory, setShowResetHistory] = useState(false)
   const [showHeadToHead, setShowHeadToHead] = useState(false)
   const [showMatchHistory, setShowMatchHistory] = useState(false)
@@ -30,9 +32,13 @@ function AppContent() {
     setShowResetDialog(false)
   }
 
-  const handleEndTournament = async () => {
-    await endTournament()
-    // Tournament ended - state will be cleared, user goes to home page
+  const handleRematch = async () => {
+    await rematch()
+  }
+
+  const handleSelectNewPlayers = () => {
+    setShowNewMatchDialog(false)
+    setShowResetDialog(true)
   }
 
   // Tournament is complete when knockout results exist (final has been played)
@@ -101,21 +107,30 @@ function AppContent() {
                 Match History
               </button>
               {inTournament && tournamentComplete && (
-                <button
-                  type="button"
-                  onClick={handleEndTournament}
-                  className="rounded-button bg-neobank-lime px-3 py-1.5 text-sm font-medium text-white hover:bg-neobank-lime-dark transition-colors"
-                >
-                  🏆 Tournament Ended
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleRematch}
+                    className="rounded-button bg-neobank-lime px-3 py-1.5 text-sm font-medium text-white hover:bg-neobank-lime-dark transition-colors"
+                  >
+                    Rematch
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewMatchDialog(true)}
+                    className="rounded-button bg-gray-100 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Start new match
+                  </button>
+                </>
               )}
-              {inTournament && (
+              {inTournament && !tournamentComplete && (
                 <button
                   type="button"
-                  onClick={() => setShowResetDialog(true)}
-                  className="rounded-button bg-red-500 dark:bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600 dark:hover:bg-red-700 transition-colors"
+                  onClick={() => setShowNewMatchDialog(true)}
+                  className="rounded-button bg-gray-100 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                 >
-                  Reset
+                  Start new match
                 </button>
               )}
             </div>
@@ -143,6 +158,12 @@ function AppContent() {
           <SetupView />
         )}
       </main>
+      <NewMatchDialog
+        isOpen={showNewMatchDialog}
+        onReplaySamePlayers={handleRematch}
+        onSelectNewPlayers={handleSelectNewPlayers}
+        onCancel={() => setShowNewMatchDialog(false)}
+      />
       <ResetConfirmationDialog
         isOpen={showResetDialog}
         onConfirm={handleResetConfirm}

@@ -17,6 +17,7 @@ import {
   savePlayers,
   saveMatches,
   saveTournamentConfig,
+  getActiveTournamentId,
   resetTournament as resetTournamentInDB,
   endTournament as endTournamentInDB,
   migrateFromLocalStorage,
@@ -45,19 +46,20 @@ type TournamentContextValue = {
   removePlayer: (id: string) => void
   shufflePlayers: () => void
   loadSamplePlayers: () => void
-  startTournament: () => void
-  setMatchScore: (matchId: string, scoreA: number, scoreB: number) => void
+  startTournament: () => void | Promise<void>
+  setMatchScore: (matchId: string, scoreA: number, scoreB: number) => void | Promise<void>
   resetTournament: (cityName: string) => Promise<void>
   endTournament: () => Promise<void>
+  rematch: () => Promise<void>
   setKnockoutPlayerCount: (count: number) => void
-  startKnockoutStage: () => void
-  advanceToFinalStage: () => void
+  startKnockoutStage: () => void | Promise<void>
+  advanceToFinalStage: () => void | Promise<void>
   fillFirstRoundWithSampleScores: () => void
   fillAllRoundsTillSeven: () => void
   fillKnockoutRound: (stage: 'play_in' | 'semi' | 'final' | 'third_place') => void
   standings: ReturnType<typeof computeStandings>
   knockoutResults: KnockoutResults | null
-  addGoldenGoalMatchesForTies: () => void
+  addGoldenGoalMatchesForTies: () => void | Promise<void>
   knockoutPlayerCount: number | null
   knockoutSeeds: string[] | null
   roundEliminations: RoundElimination[]
@@ -193,12 +195,15 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const startTournament = useCallback(() => {
+  const startTournament = useCallback(async () => {
+    const tournamentId = await getActiveTournamentId()
+    if (!tournamentId) return
+    const idPrefix = `${tournamentId}-${Date.now()}-`
     setState((s) => {
       if (s.players.length < 2) return s
       const schedule = generateRoundRobinSchedule(s.players)
-      const matches: Match[] = schedule.map((m, i) => ({
-        id: `m-${i}-${m.playerAId}-${m.playerBId}`,
+      const matches: Match[] = schedule.map((m) => ({
+        id: `${idPrefix}m-${makeId()}`,
         playerAId: m.playerAId,
         playerBId: m.playerBId,
         roundIndex: m.roundIndex,
@@ -210,7 +215,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const setMatchScore = useCallback((matchId: string, scoreA: number, scoreB: number) => {
+  const setMatchScore = useCallback(async (matchId: string, scoreA: number, scoreB: number) => {
+    const tournamentId = await getActiveTournamentId()
+    const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
     setState((s) => {
       const match = s.matches.find((m) => m.id === matchId)
       if (!match) return s
@@ -294,7 +301,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
               ...next,
               matches: [
                 ...next.matches,
-                { id: 'ko-final', playerAId: s0, playerBId: playInWinners[0], roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'final' as const },
+                { id: `${idPrefix}ko-final-${makeId()}`, playerAId: s0, playerBId: playInWinners[0], roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'final' as const },
               ],
             }
           } else if (s.knockoutPlayerCount === 5 && !hasSemi) {
@@ -305,8 +312,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 ...next,
                 matches: [
                   ...next.matches,
-                  { id: 'ko-semi1', playerAId: s0, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                  { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                 ],
               }
             }
@@ -327,7 +334,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 ...next,
                 matches: [
                   ...next.matches,
-                  { id: 'ko-playin-1', playerAId: s3, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'play_in' as const },
+                  { id: `${idPrefix}ko-playin-${makeId()}`, playerAId: s3, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'play_in' as const },
                 ],
               }
             } else if (playInWinners.length === 1 && remainingPlayers.length === 0) {
@@ -337,8 +344,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 ...next,
                 matches: [
                   ...next.matches,
-                  { id: 'ko-semi1', playerAId: s0, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                  { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                 ],
               }
             }
@@ -365,7 +372,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                   const idx2 = i + 1
                   if (idx2 < nextRoundPlayers.length) {
                     nextRoundMatches.push({
-                      id: `ko-playin-${playInMatches.length + nextRoundMatches.length}`,
+                      id: `${idPrefix}ko-playin-${makeId()}`,
                       playerAId: nextRoundPlayers[idx1],
                       playerBId: nextRoundPlayers[idx2],
                       roundIndex: -10,
@@ -389,8 +396,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                     ...next,
                     matches: [
                       ...next.matches,
-                      { id: 'ko-semi1', playerAId: s0, playerBId: nextRoundPlayers[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                      { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                      { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: nextRoundPlayers[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                      { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                     ],
                   }
                 }
@@ -401,8 +408,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                   ...next,
                   matches: [
                     ...next.matches,
-                    { id: 'ko-semi1', playerAId: s0, playerBId: nextRoundPlayers[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                    { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                    { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: nextRoundPlayers[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                    { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                   ],
                 }
               }
@@ -413,8 +420,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 ...next,
                 matches: [
                   ...next.matches,
-                  { id: 'ko-semi1', playerAId: s0, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                  { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                 ],
               }
             }
@@ -434,8 +441,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             ...next,
             matches: [
               ...next.matches,
-              { id: 'ko-final', playerAId: winner1, playerBId: winner2, roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'final' as const },
-              { id: 'ko-third', playerAId: loser1, playerBId: loser2, roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'third_place' as const },
+              { id: `${idPrefix}ko-final-${makeId()}`, playerAId: winner1, playerBId: winner2, roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'final' as const },
+              { id: `${idPrefix}ko-third-${makeId()}`, playerAId: loser1, playerBId: loser2, roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'third_place' as const },
             ],
           }
         }
@@ -498,6 +505,49 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }))
   }, [state.players, state.matches, state.knockoutPlayerCount, state.knockoutSeeds, state.roundEliminations])
 
+  const rematch = useCallback(async () => {
+    const currentPlayers = [...state.players]
+    const currentMatches = [...state.matches]
+    try {
+      await Promise.all([
+        savePlayers(currentPlayers, true),
+        saveMatches(currentMatches, true),
+        saveTournamentConfig(
+          state.knockoutPlayerCount,
+          state.knockoutSeeds,
+          state.roundEliminations
+        ),
+      ])
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    } catch (error) {
+      console.error('Failed to save before rematch:', error)
+    }
+    await endTournamentInDB()
+    const tournamentId = await getActiveTournamentId()
+    if (!tournamentId) return
+    const idPrefix = `${tournamentId}-${Date.now()}-`
+    setState((s) => {
+      if (s.players.length < 2) return s
+      const schedule = generateRoundRobinSchedule(s.players)
+      const matches: Match[] = schedule.map((m) => ({
+        id: `${idPrefix}m-${makeId()}`,
+        playerAId: m.playerAId,
+        playerBId: m.playerBId,
+        roundIndex: m.roundIndex,
+        scoreA: null,
+        scoreB: null,
+        status: 'pending',
+      }))
+      return {
+        ...s,
+        matches,
+        knockoutSeeds: null,
+        knockoutPlayerCount: null,
+        roundEliminations: [],
+      }
+    })
+  }, [state.players, state.matches, state.knockoutPlayerCount, state.knockoutSeeds, state.roundEliminations])
+
   const setKnockoutPlayerCount = useCallback((count: number) => {
     setState((s) => {
       if (count < 2 || count > s.players.length) return s
@@ -505,7 +555,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const startKnockoutStage = useCallback(() => {
+  const startKnockoutStage = useCallback(async () => {
+    const tournamentId = await getActiveTournamentId()
+    const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
     setState((s) => {
       if (!s.knockoutPlayerCount || s.knockoutPlayerCount < 2) return s
       const groupStandings = computeStandings(s.players, s.matches.filter((m) => !m.stage))
@@ -524,7 +576,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           ;[seeds[i], seeds[j]] = [seeds[j], seeds[i]]
         }
         matchesToAdd.push({
-          id: 'ko-final',
+          id: `${idPrefix}ko-final-${makeId()}`,
           playerAId: seeds[0],
           playerBId: seeds[1],
           roundIndex: -11,
@@ -542,7 +594,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           ;[seeds[1], seeds[2]] = [seeds[2], seeds[1]]
         }
         matchesToAdd.push({
-          id: 'ko-playin',
+          id: `${idPrefix}ko-playin-${makeId()}`,
           playerAId: seeds[1],
           playerBId: seeds[2],
           roundIndex: -10,
@@ -567,7 +619,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         // Pair up: first two vs last two
         matchesToAdd.push(
           {
-            id: 'ko-semi1',
+            id: `${idPrefix}ko-semi-${makeId()}`,
             playerAId: seeds[0],
             playerBId: seeds[1],
             roundIndex: -10,
@@ -577,7 +629,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             stage: 'semi',
           },
           {
-            id: 'ko-semi2',
+            id: `${idPrefix}ko-semi-${makeId()}`,
             playerAId: seeds[2],
             playerBId: seeds[3],
             roundIndex: -10,
@@ -617,7 +669,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         } else if (bottomCount === 2) {
           // 5 players: 4th vs 5th
           matchesToAdd.push({
-            id: 'ko-playin-0',
+            id: `${idPrefix}ko-playin-${makeId()}`,
             playerAId: seeds[3],
             playerBId: seeds[4],
             roundIndex: -10,
@@ -632,7 +684,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           // Round 2: Winner vs 4th (winner plays middle player)
           // Only 1 player advances from bottom 3 to join top 3
           matchesToAdd.push({
-            id: 'ko-playin-0',
+            id: `${idPrefix}ko-playin-${makeId()}`,
             playerAId: seeds[4], // 5th place
             playerBId: seeds[5], // 6th place
             roundIndex: -10,
@@ -651,7 +703,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             const idx2 = startIdx + i + 1
             if (idx2 < seeds.length) {
               matchesToAdd.push({
-                id: `ko-playin-${matchIndex}`,
+                id: `${idPrefix}ko-playin-${makeId()}`,
                 playerAId: seeds[idx1],
                 playerBId: seeds[idx2],
                 roundIndex: -10,
@@ -718,7 +770,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const advanceToFinalStage = useCallback(() => {
+  const advanceToFinalStage = useCallback(async () => {
+    const tournamentId = await getActiveTournamentId()
+    const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
     setState((s) => {
       if (!s.knockoutSeeds || !s.knockoutPlayerCount) return s
       
@@ -739,7 +793,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             ...s,
             matches: [
               ...s.matches,
-              { id: 'ko-final', playerAId: s0, playerBId: playInWinners[0], roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'final' as const },
+              { id: `${idPrefix}ko-final-${makeId()}`, playerAId: s0, playerBId: playInWinners[0], roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'final' as const },
             ],
           }
         }
@@ -760,8 +814,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 ...s,
                 matches: [
                   ...s.matches,
-                  { id: 'ko-semi1', playerAId: s0, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                  { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                 ],
               }
             }
@@ -781,17 +835,16 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 ...s,
                 matches: [
                   ...s.matches,
-                  { id: 'ko-playin-1', playerAId: s3, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'play_in' as const },
+                  { id: `${idPrefix}ko-playin-${makeId()}`, playerAId: s3, playerBId: playInWinners[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'play_in' as const },
                 ],
               }
             } else if (playInMatches.length === 2 && remainingPlayers.length === 0) {
               // Round 2 complete (winner vs 4th), now create semi-finals
-              // Get the winner of the LAST play-in match (the final one)
-              const sortedPlayInMatches = playInMatches.sort((a, b) => {
-                // Sort by id to get the order (ko-playin-0 comes before ko-playin-1)
-                return a.id.localeCompare(b.id)
-              })
-              const finalPlayInMatch = sortedPlayInMatches[sortedPlayInMatches.length - 1]
+              // The round 2 match is the one that includes 4th seed (s3)
+              const [, , , s3] = s.knockoutSeeds
+              const finalPlayInMatch = playInMatches.find(
+                (m) => m.playerAId === s3 || m.playerBId === s3
+              ) ?? playInMatches[playInMatches.length - 1]
               const finalWinner = finalPlayInMatch.scoreA! > finalPlayInMatch.scoreB! 
                 ? finalPlayInMatch.playerAId 
                 : finalPlayInMatch.playerBId
@@ -801,8 +854,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 ...s,
                 matches: [
                   ...s.matches,
-                  { id: 'ko-semi1', playerAId: s0, playerBId: finalWinner, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                  { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: finalWinner, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                 ],
               }
             }
@@ -823,7 +876,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 const idx2 = i + 1
                 if (idx2 < nextRoundPlayers.length) {
                   nextRoundMatches.push({
-                    id: `ko-playin-${playInMatches.length + nextRoundMatches.length}`,
+                    id: `${idPrefix}ko-playin-${makeId()}`,
                     playerAId: nextRoundPlayers[idx1],
                     playerBId: nextRoundPlayers[idx2],
                     roundIndex: -10,
@@ -847,8 +900,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                   ...s,
                   matches: [
                     ...s.matches,
-                    { id: 'ko-semi1', playerAId: s0, playerBId: nextRoundPlayers[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                    { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                    { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: nextRoundPlayers[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                    { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                   ],
                 }
               }
@@ -859,8 +912,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
                 ...s,
                 matches: [
                   ...s.matches,
-                  { id: 'ko-semi1', playerAId: s0, playerBId: nextRoundPlayers[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
-                  { id: 'ko-semi2', playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s0, playerBId: nextRoundPlayers[0], roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
+                  { id: `${idPrefix}ko-semi-${makeId()}`, playerAId: s1, playerBId: s2, roundIndex: -10, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'semi' as const },
                 ],
               }
             }
@@ -883,8 +936,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           ...s,
           matches: [
             ...s.matches,
-            { id: 'ko-final', playerAId: winner1, playerBId: winner2, roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'final' as const },
-            { id: 'ko-third', playerAId: loser1, playerBId: loser2, roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'third_place' as const },
+            { id: `${idPrefix}ko-final-${makeId()}`, playerAId: winner1, playerBId: winner2, roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'final' as const },
+            { id: `${idPrefix}ko-third-${makeId()}`, playerAId: loser1, playerBId: loser2, roundIndex: -11, scoreA: null, scoreB: null, status: 'pending' as const, stage: 'third_place' as const },
           ],
         }
       }
@@ -939,7 +992,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     return { firstId, secondId, thirdId: null }
   }, [state.matches])
 
-  const addGoldenGoalMatchesForTies = useCallback(() => {
+  const addGoldenGoalMatchesForTies = useCallback(async () => {
+    const tournamentId = await getActiveTournamentId()
+    const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
     const tiedPairs = getTiedPairs(standings)
     if (tiedPairs.length === 0) return
     const existingPairs = new Set(
@@ -953,7 +1008,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       if (existingPairs.has(key)) continue
       existingPairs.add(key)
       toAdd.push({
-        id: `golden-${key}`,
+        id: `${idPrefix}golden-${makeId()}`,
         playerAId,
         playerBId,
         roundIndex: -1,
@@ -981,6 +1036,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       setMatchScore,
       resetTournament,
       endTournament,
+      rematch,
       setKnockoutPlayerCount,
       startKnockoutStage,
       advanceToFinalStage,
@@ -1007,6 +1063,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       setMatchScore,
       resetTournament,
       endTournament,
+      rematch,
       setKnockoutPlayerCount,
       startKnockoutStage,
       advanceToFinalStage,
