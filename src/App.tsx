@@ -230,8 +230,9 @@ function TournamentView({ testMode }: { testMode: boolean }) {
   const allGoldenPlayed = goldenMatches.length === 0 || goldenMatches.every((m) => m.scoreA !== null && m.scoreB !== null)
   // Allow knockout even with ties - users can resolve ties later or proceed
   const groupComplete = allGroupPlayed && allGoldenPlayed
-  const canSetKnockoutCount = groupComplete && !knockoutSeeds && standings.length >= 2
-  const canStartKnockout = groupComplete && !knockoutSeeds && knockoutPlayerCount !== null && standings.length >= knockoutPlayerCount && knockoutPlayerCount >= 2
+  // For exactly 2 players, treat tournament as a single game (no knockout stage).
+  const canSetKnockoutCount = groupComplete && !knockoutSeeds && standings.length >= 3
+  const canStartKnockout = groupComplete && !knockoutSeeds && knockoutPlayerCount !== null && standings.length >= knockoutPlayerCount && knockoutPlayerCount >= 2 && standings.length >= 3
   
   // Get qualified players (top N based on knockoutPlayerCount)
   const qualifiedPlayers = knockoutPlayerCount 

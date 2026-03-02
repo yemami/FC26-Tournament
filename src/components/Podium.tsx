@@ -68,6 +68,32 @@ export function Podium() {
   const goldenMatches = matches.filter((m) => m.isGoldenGoal)
   const allGoldenPlayed = goldenMatches.length === 0 || goldenMatches.every((m) => m.scoreA !== null && m.scoreB !== null)
   const groupComplete = allPlayed && allGoldenPlayed && !standings.some((s) => s.isTied)
+  const top2 = standings.slice(0, 2)
+
+  // 2-player tournament: single game result, no knockout stage.
+  if (standings.length === 2 && top2.length === 2 && groupComplete) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-card shadow-card dark:shadow-none dark:border dark:border-gray-700 p-6 transition-colors">
+        <h2 className="mb-6 text-center text-xl font-bold text-gray-900 dark:text-gray-100">Final Standings</h2>
+        <div className="flex items-end justify-center gap-4">
+          <div className="flex flex-col items-center">
+            <div className="flex w-24 items-end justify-center rounded-t h-20 bg-gray-300 dark:bg-gray-600 shadow-sm">
+              <span className="mb-2 text-lg font-bold text-white">2nd</span>
+            </div>
+            <div className="mt-3 text-center font-semibold text-gray-900 dark:text-gray-100">{top2[1]?.playerName}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400 font-medium mt-1">{top2[1]?.points} pts</div>
+          </div>
+          <div className="flex flex-col items-center">
+            <div className="flex w-28 items-end justify-center rounded-t h-32 bg-neobank-lime shadow-sm">
+              <span className="mb-2 text-xl font-bold text-white">1st</span>
+            </div>
+            <div className="mt-3 text-center font-semibold text-gray-900 dark:text-gray-100">{top2[0]?.playerName}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400 font-medium mt-1">{top2[0]?.points} pts</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (top3.length === 0 || !groupComplete) return null
 
