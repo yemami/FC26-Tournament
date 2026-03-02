@@ -43,6 +43,13 @@ function AppContent() {
     setShowResetDialog(true)
   }
 
+  const handleBackToOngoingGame = () => {
+    setShowHeadToHead(false)
+    setShowMatchHistory(false)
+    setShowRecords(false)
+    setShowResetHistory(false)
+  }
+
   // Tournament is complete when knockout results exist (final has been played)
   const tournamentComplete = !!knockoutResults
 
@@ -182,18 +189,26 @@ function AppContent() {
       <ResetHistory
         isOpen={showResetHistory}
         onClose={() => setShowResetHistory(false)}
+        hasOngoingGame={inTournament}
+        onGoToOngoingGame={handleBackToOngoingGame}
       />
       <HeadToHead
         isOpen={showHeadToHead}
         onClose={() => setShowHeadToHead(false)}
+        hasOngoingGame={inTournament}
+        onGoToOngoingGame={handleBackToOngoingGame}
       />
       <MatchHistory
         isOpen={showMatchHistory}
         onClose={() => setShowMatchHistory(false)}
+        hasOngoingGame={inTournament}
+        onGoToOngoingGame={handleBackToOngoingGame}
       />
       <Records
         isOpen={showRecords}
         onClose={() => setShowRecords(false)}
+        hasOngoingGame={inTournament}
+        onGoToOngoingGame={handleBackToOngoingGame}
       />
     </div>
   )

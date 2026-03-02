@@ -15,6 +15,8 @@ export interface HeadToHeadStats {
     match: Match
     playerA: Player
     playerB: Player
+    scoreForPlayerA: number
+    scoreForPlayerB: number
     matchType: 'group' | 'knockout' | 'golden_goal'
     stage?: string
     roundIndex: number
@@ -111,6 +113,8 @@ export function calculateHeadToHead(
       match,
       playerA: matchPlayerA,
       playerB: matchPlayerB,
+      scoreForPlayerA: scoreA,
+      scoreForPlayerB: scoreB,
       matchType,
       stage: match.stage,
       roundIndex: match.roundIndex,
@@ -218,6 +222,8 @@ export function calculateHeadToHeadByName(
       match,
       playerA: matchPlayerA,
       playerB: matchPlayerB,
+      scoreForPlayerA: scoreA,
+      scoreForPlayerB: scoreB,
       matchType,
       stage: match.stage,
       roundIndex: match.roundIndex,
@@ -272,10 +278,7 @@ export function getMatchTypeStats(stats: HeadToHeadStats): MatchTypeStats {
   }
 
   for (const matchDetail of stats.matches) {
-    const { match, matchType } = matchDetail
-    const isPlayerAFirst = match.playerAId === stats.playerAId
-    const scoreA = isPlayerAFirst ? match.scoreA! : match.scoreB!
-    const scoreB = isPlayerAFirst ? match.scoreB! : match.scoreA!
+    const { match, matchType, scoreForPlayerA: scoreA, scoreForPlayerB: scoreB } = matchDetail
 
     if (matchType === 'group') {
       result.group.matches++
@@ -311,7 +314,8 @@ export function getMatchTypeStats(stats: HeadToHeadStats): MatchTypeStats {
 
 /**
  * Win probability prediction based on head-to-head history.
- * Uses recency weighting: recent matches count more than older ones.
+ * Uses aggregate outcomes (wins/draws/losses) so the player with more
+ * total wins always gets a higher win probability.
  */
 export interface WinPrediction {
   playerAWinPct: number
@@ -320,40 +324,50 @@ export interface WinPrediction {
   totalMatches: number
 }
 
+function normalizePercentagesTo100(values: [number, number, number]): [number, number, number] {
+  const floors: [number, number, number] = [
+    Math.floor(values[0]),
+    Math.floor(values[1]),
+    Math.floor(values[2]),
+  ]
+  let remainder = 100 - (floors[0] + floors[1] + floors[2])
+  const fractions = [
+    { idx: 0 as const, frac: values[0] - floors[0] },
+    { idx: 1 as const, frac: values[1] - floors[1] },
+    { idx: 2 as const, frac: values[2] - floors[2] },
+  ].sort((a, b) => b.frac - a.frac)
+
+  for (let i = 0; i < fractions.length && remainder > 0; i++) {
+    floors[fractions[i].idx] += 1
+    remainder--
+  }
+
+  return floors
+}
+
 export function getWinPrediction(stats: HeadToHeadStats | null): WinPrediction | null {
   if (!stats || stats.totalMatches === 0) return null
 
-  // Recency weighting: most recent match = 1, next = 0.5, next = 0.25, etc.
-  const sortedMatches = [...stats.matches].sort((a, b) => {
-    const ta = a.match.updated_at || a.match.created_at || ''
-    const tb = b.match.updated_at || b.match.created_at || ''
-    return tb.localeCompare(ta) // most recent first
-  })
+  const totalMatches = stats.totalMatches
+  const nonDrawMatches = stats.playerAWins + stats.playerBWins
 
-  let weightedAWins = 0
-  let weightedBWins = 0
-  let weightedDraws = 0
-  let totalWeight = 0
+  // Draw share from actual draw frequency.
+  const rawD = (stats.draws / totalMatches) * 100
 
-  for (let i = 0; i < sortedMatches.length; i++) {
-    const w = Math.pow(0.5, i) // 1, 0.5, 0.25, 0.125...
-    const md = sortedMatches[i]
-    const isPlayerAFirst = md.match.playerAId === stats.playerAId
-    const scoreA = isPlayerAFirst ? md.match.scoreA! : md.match.scoreB!
-    const scoreB = isPlayerAFirst ? md.match.scoreB! : md.match.scoreA!
-
-    totalWeight += w
-    if (scoreA > scoreB) weightedAWins += w
-    else if (scoreB > scoreA) weightedBWins += w
-    else weightedDraws += w
+  let rawA = 0
+  let rawB = 0
+  if (nonDrawMatches > 0) {
+    const remaining = 100 - rawD
+    rawA = (stats.playerAWins / nonDrawMatches) * remaining
+    rawB = (stats.playerBWins / nonDrawMatches) * remaining
   }
 
-  if (totalWeight <= 0) return null
+  const [playerAWinPct, playerBWinPct, drawPct] = normalizePercentagesTo100([rawA, rawB, rawD])
 
   return {
-    playerAWinPct: Math.round((weightedAWins / totalWeight) * 100),
-    playerBWinPct: Math.round((weightedBWins / totalWeight) * 100),
-    drawPct: Math.round((weightedDraws / totalWeight) * 100),
+    playerAWinPct,
+    playerBWinPct,
+    drawPct,
     totalMatches: stats.totalMatches,
   }
 }

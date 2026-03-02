@@ -7,9 +7,16 @@ import type { Match, Player } from '../types'
 interface HeadToHeadProps {
   isOpen: boolean
   onClose: () => void
+  hasOngoingGame?: boolean
+  onGoToOngoingGame?: () => void
 }
 
-export function HeadToHead({ isOpen, onClose }: HeadToHeadProps) {
+export function HeadToHead({
+  isOpen,
+  onClose,
+  hasOngoingGame = false,
+  onGoToOngoingGame,
+}: HeadToHeadProps) {
   const { matches: currentMatches, players: currentPlayers } = useTournament()
   const [historicalMatches, setHistoricalMatches] = useState<Match[]>([])
   const [historicalPlayers, setHistoricalPlayers] = useState<Player[]>([])
@@ -134,13 +141,24 @@ export function HeadToHead({ isOpen, onClose }: HeadToHeadProps) {
       <div className="w-full max-w-4xl max-h-[90vh] rounded-card bg-white dark:bg-gray-800 shadow-xl flex flex-col border border-gray-200 dark:border-gray-700 transition-colors">
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 p-5">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Head-to-Head History</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-button bg-gray-100 dark:bg-gray-700 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            {hasOngoingGame && onGoToOngoingGame && (
+              <button
+                type="button"
+                onClick={onGoToOngoingGame}
+                className="rounded-button bg-neobank-lime px-4 py-2 text-sm font-semibold text-white hover:bg-neobank-lime-dark transition-colors"
+              >
+                Back to Ongoing Game
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-button bg-gray-100 dark:bg-gray-700 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">

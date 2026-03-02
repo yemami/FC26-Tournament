@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -12,6 +13,7 @@ import { generateRoundRobinSchedule } from '../lib/roundRobin'
 import { computeStandings } from '../lib/standings'
 import { getTiedPairs } from '../lib/tieBreak'
 import { determineElimination } from '../lib/elimination'
+import { supabase } from '../lib/supabase'
 import {
   loadTournamentState,
   loadAllHistoricalMatches,
@@ -41,6 +43,22 @@ interface TournamentState {
   roundEliminations: RoundElimination[]
   /** Track if we've attempted migration */
   migrationAttempted: boolean
+}
+
+function tournamentStateKey(input: {
+  players: Player[]
+  matches: Match[]
+  knockoutPlayerCount: number | null
+  knockoutSeeds: string[] | null
+  roundEliminations: RoundElimination[]
+}): string {
+  return JSON.stringify({
+    players: input.players,
+    matches: input.matches,
+    knockoutPlayerCount: input.knockoutPlayerCount,
+    knockoutSeeds: input.knockoutSeeds,
+    roundEliminations: input.roundEliminations,
+  })
 }
 
 type TournamentContextValue = {
@@ -100,6 +118,13 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [historicalMatches, setHistoricalMatches] = useState<Match[]>([])
   const [historicalPlayers, setHistoricalPlayers] = useState<Player[]>([])
+  const hasPendingLocalChangesRef = useRef(false)
+  const localMutationVersionRef = useRef(0)
+
+  const markLocalMutation = useCallback(() => {
+    localMutationVersionRef.current += 1
+    hasPendingLocalChangesRef.current = true
+  }, [])
 
   // Load initial state from Supabase
   useEffect(() => {
@@ -144,6 +169,94 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }
   }, []) // Only run once on mount
 
+  // Keep clients in sync across devices/tabs for the same tournament link.
+  useEffect(() => {
+    if (isLoading) return
+
+    let cancelled = false
+    let channel: ReturnType<typeof supabase.channel> | null = null
+
+    const refreshFromServer = async () => {
+      try {
+        const latest = await loadTournamentState()
+        if (cancelled) return
+
+        setState((prev) => {
+          const prevKey = tournamentStateKey(prev)
+          const latestKey = tournamentStateKey(latest)
+
+          // Never overwrite local unsaved edits; only clear pending when DB catches up.
+          if (hasPendingLocalChangesRef.current) {
+            if (prevKey === latestKey) {
+              hasPendingLocalChangesRef.current = false
+            }
+            return prev
+          }
+
+          // During setup (no matches yet), keep local roster choices.
+          // This prevents removed players from auto-reappearing from the global catalog.
+          if (prev.matches.length === 0 && latest.matches.length === 0) {
+            return prev
+          }
+
+          if (prevKey === latestKey) return prev
+          return {
+            ...prev,
+            ...latest,
+            migrationAttempted: true,
+          }
+        })
+      } catch (error) {
+        console.error('Failed to refresh tournament state:', error)
+      }
+    }
+
+    // Fast fallback polling (helps even when realtime is unavailable).
+    const intervalId = setInterval(refreshFromServer, 1000)
+
+    // Realtime push updates for near-instant sync across devices.
+    ;(async () => {
+      const tournamentId = await getActiveTournamentId()
+      if (cancelled || !tournamentId) return
+
+      channel = supabase
+        .channel(`tournament-sync-${tournamentId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'matches',
+            filter: `tournament_id=eq.${tournamentId}`,
+          },
+          () => {
+            void refreshFromServer()
+          }
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'tournaments',
+            filter: `id=eq.${tournamentId}`,
+          },
+          () => {
+            void refreshFromServer()
+          }
+        )
+        .subscribe()
+    })()
+
+    return () => {
+      cancelled = true
+      clearInterval(intervalId)
+      if (channel) {
+        void supabase.removeChannel(channel)
+      }
+    }
+  }, [isLoading])
+
   // Save to Supabase whenever state changes (debounced)
   useEffect(() => {
     if (isLoading) return
@@ -157,10 +270,15 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    // Only persist when state changed from local user actions.
+    if (!hasPendingLocalChangesRef.current) return
+
     const timeoutId = setTimeout(async () => {
+      const saveVersion = localMutationVersionRef.current
       try {
         await Promise.all([
-          savePlayers(state.players),
+          // Preserve full player catalog; roster changes should not delete global players.
+          savePlayers(state.players, true),
           saveMatches(state.matches),
           saveTournamentConfig(
             state.knockoutPlayerCount,
@@ -168,6 +286,9 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
             state.roundEliminations
           ),
         ])
+        if (saveVersion === localMutationVersionRef.current) {
+          hasPendingLocalChangesRef.current = false
+        }
       } catch (error) {
         console.error('Failed to save tournament state:', error)
       }
@@ -179,11 +300,12 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const selectPlayer = useCallback((playerId: string) => {
     const player = historicalPlayers.find((p) => p.id === playerId)
     if (!player) return
+    markLocalMutation()
     setState((s) => {
       if (s.players.some((p) => p.id === playerId)) return s
       return { ...s, players: [...s.players, player] }
     })
-  }, [historicalPlayers])
+  }, [historicalPlayers, markLocalMutation])
 
   const addPlayerToDatabaseCb = useCallback(async (name: string): Promise<AddPlayerResult> => {
     const result = await addPlayerToDatabase(name)
@@ -203,6 +325,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const removePlayer = useCallback((id: string) => {
+    markLocalMutation()
     setState((s) => ({
       ...s,
       players: s.players.filter((p) => p.id !== id),
@@ -211,9 +334,10 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       knockoutPlayerCount: null,
       roundEliminations: [],
     }))
-  }, [])
+  }, [markLocalMutation])
 
   const shufflePlayers = useCallback(() => {
+    markLocalMutation()
     setState((s) => {
       const list = [...s.players]
       for (let i = list.length - 1; i > 0; i--) {
@@ -222,19 +346,32 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }
       return { ...s, players: list }
     })
-  }, [])
+  }, [markLocalMutation])
 
   const loadSamplePlayers = useCallback(async () => {
     const allPlayers = await getPlayersFromDatabase()
+    markLocalMutation()
     setState((s) => ({ ...s, players: allPlayers, matches: [] }))
-  }, [])
+  }, [markLocalMutation])
 
   const startTournament = useCallback(async () => {
+    // Guard against race: if someone already started this tournament, load that state.
+    const latest = await loadTournamentState()
+    if (latest.matches.length > 0) {
+      setState((s) => ({
+        ...s,
+        ...latest,
+        migrationAttempted: true,
+      }))
+      return
+    }
+
     const tournamentId = await getActiveTournamentId()
     if (!tournamentId) return
     const idPrefix = `${tournamentId}-${Date.now()}-`
+    markLocalMutation()
     setState((s) => {
-      if (s.players.length < 2) return s
+      if (s.players.length < 2 || s.matches.length > 0) return s
       const schedule = generateRoundRobinSchedule(s.players)
       const matches: Match[] = schedule.map((m) => ({
         id: `${idPrefix}m-${makeId()}`,
@@ -247,11 +384,12 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }))
       return { ...s, matches, knockoutSeeds: null, roundEliminations: [] }
     })
-  }, [])
+  }, [markLocalMutation])
 
   const setMatchScore = useCallback(async (matchId: string, scoreA: number, scoreB: number) => {
     const tournamentId = await getActiveTournamentId()
     const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
+    markLocalMutation()
     setState((s) => {
       const match = s.matches.find((m) => m.id === matchId)
       if (!match) return s
@@ -483,16 +621,17 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }
       return next
     })
-  }, [])
+  }, [markLocalMutation])
 
   const setMatchComment = useCallback((matchId: string, comment: string) => {
+    markLocalMutation()
     setState((s) => ({
       ...s,
       matches: s.matches.map((m) =>
         m.id === matchId ? { ...m, comment: comment.trim() || undefined } : m
       ),
     }))
-  }, [])
+  }, [markLocalMutation])
 
   const resetTournament = useCallback(async (cityName: string) => {
     await resetTournamentInDB(cityName)
@@ -569,6 +708,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     const tournamentId = await getActiveTournamentId()
     if (!tournamentId) return
     const idPrefix = `${tournamentId}-${Date.now()}-`
+    markLocalMutation()
     setState((s) => {
       if (s.players.length < 2) return s
       const schedule = generateRoundRobinSchedule(s.players)
@@ -589,18 +729,20 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         roundEliminations: [],
       }
     })
-  }, [state.players, state.matches, state.knockoutPlayerCount, state.knockoutSeeds, state.roundEliminations])
+  }, [state.players, state.matches, state.knockoutPlayerCount, state.knockoutSeeds, state.roundEliminations, markLocalMutation])
 
   const setKnockoutPlayerCount = useCallback((count: number) => {
+    markLocalMutation()
     setState((s) => {
       if (count < 2 || count > s.players.length) return s
       return { ...s, knockoutPlayerCount: count, knockoutSeeds: null }
     })
-  }, [])
+  }, [markLocalMutation])
 
   const startKnockoutStage = useCallback(async () => {
     const tournamentId = await getActiveTournamentId()
     const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
+    markLocalMutation()
     setState((s) => {
       if (!s.knockoutPlayerCount || s.knockoutPlayerCount < 2) return s
       const groupStandings = computeStandings(s.players, s.matches.filter((m) => !m.stage))
@@ -770,7 +912,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         matches: [...s.matches, ...matchesToAdd],
       }
     })
-  }, [])
+  }, [markLocalMutation])
 
   // Sample scores for testing. Cycle through for many matches.
   const SAMPLE_SCORES: [number, number][] = [
@@ -778,6 +920,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   ]
 
   const fillFirstRoundWithSampleScores = useCallback(() => {
+    markLocalMutation()
     setState((s) => {
       const firstRoundMatches = s.matches
         .filter((m) => !m.isGoldenGoal && m.roundIndex === 0)
@@ -793,9 +936,10 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         }),
       }
     })
-  }, [])
+  }, [markLocalMutation])
 
   const fillAllRoundsTillSeven = useCallback(() => {
+    markLocalMutation()
     setState((s) => {
       const roundRobin = s.matches
         .filter((m) => !m.isGoldenGoal && m.roundIndex >= 0 && m.roundIndex <= 6)
@@ -811,11 +955,12 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         }),
       }
     })
-  }, [])
+  }, [markLocalMutation])
 
   const advanceToFinalStage = useCallback(async () => {
     const tournamentId = await getActiveTournamentId()
     const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
+    markLocalMutation()
     setState((s) => {
       if (!s.knockoutSeeds || !s.knockoutPlayerCount) return s
       
@@ -987,9 +1132,10 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       
       return s
     })
-  }, [])
+  }, [markLocalMutation])
 
   const fillKnockoutRound = useCallback((stage: 'play_in' | 'semi' | 'final' | 'third_place') => {
+    markLocalMutation()
     setState((s) => {
       const roundMatches = s.matches
         .filter((m) => m.stage === stage && (m.scoreA === null || m.scoreB === null))
@@ -1010,7 +1156,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         }),
       }
     })
-  }, [])
+  }, [markLocalMutation])
 
   const standings = useMemo(
     () => computeStandings(state.players, state.matches),
@@ -1083,9 +1229,10 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       })
     }
     if (toAdd.length > 0) {
+      markLocalMutation()
       setState((s) => ({ ...s, matches: [...s.matches, ...toAdd] }))
     }
-  }, [standings, state.matches])
+  }, [standings, state.matches, markLocalMutation])
 
   const value = useMemo<TournamentContextValue>(
     () => ({

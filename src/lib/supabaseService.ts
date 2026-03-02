@@ -2,6 +2,26 @@ import { supabase } from './supabase'
 import type { Player, Match, RoundElimination } from '../types'
 
 const ACTIVE_TOURNAMENT_ID_KEY = 'fc26-active-tournament-id'
+const TOURNAMENT_QUERY_PARAM = 't'
+
+function getTournamentIdFromUrl(): string | null {
+  if (typeof window === 'undefined') return null
+  const id = new URL(window.location.href).searchParams.get(TOURNAMENT_QUERY_PARAM)
+  return id && id.trim() ? id.trim() : null
+}
+
+function writeTournamentIdToUrl(tournamentId: string): void {
+  if (typeof window === 'undefined') return
+  const url = new URL(window.location.href)
+  if (url.searchParams.get(TOURNAMENT_QUERY_PARAM) === tournamentId) return
+  url.searchParams.set(TOURNAMENT_QUERY_PARAM, tournamentId)
+  window.history.replaceState({}, '', url.toString())
+}
+
+function setLocalAndUrlActiveTournamentId(tournamentId: string): void {
+  localStorage.setItem(ACTIVE_TOURNAMENT_ID_KEY, tournamentId)
+  writeTournamentIdToUrl(tournamentId)
+}
 
 /**
  * Get or create active tournament ID
@@ -9,43 +29,36 @@ const ACTIVE_TOURNAMENT_ID_KEY = 'fc26-active-tournament-id'
  * Falls back to most recent match/tournament for sync across browsers.
  */
 export async function getActiveTournamentId(): Promise<string | null> {
-  // Check localStorage FIRST - after end/reset we create a new tournament and set it here
-  // This ensures we use the new tournament instead of reusing the old one
+  // 1) URL tournament id is authoritative for shared consistency across devices.
+  const urlTournamentId = getTournamentIdFromUrl()
+  if (urlTournamentId) {
+    const { data } = await supabase.from('tournaments').select('id').eq('id', urlTournamentId).single()
+    if (data) {
+      setLocalAndUrlActiveTournamentId(urlTournamentId)
+      return urlTournamentId
+    }
+  }
+
+  // 2) Otherwise use the latest tournament globally so everyone opening base URL sees the same game.
+  const { data: latestTournament } = await supabase
+    .from('tournaments')
+    .select('id')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (latestTournament?.id) {
+    setLocalAndUrlActiveTournamentId(latestTournament.id)
+    return latestTournament.id
+  }
+
+  // 3) Fallback to previously stored ID.
   const storedId = localStorage.getItem(ACTIVE_TOURNAMENT_ID_KEY)
   if (storedId) {
     const { data } = await supabase.from('tournaments').select('id').eq('id', storedId).single()
-    if (data) return storedId
-  }
-
-  // Find the tournament ID with the most recent match activity (for sync across browsers)
-  const { data: recentMatch } = await supabase
-    .from('matches')
-    .select('tournament_id, updated_at')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single()
-  
-  if (recentMatch && recentMatch.tournament_id) {
-    const activeId = recentMatch.tournament_id
-    const { data } = await supabase.from('tournaments').select('id').eq('id', activeId).single()
     if (data) {
-      localStorage.setItem(ACTIVE_TOURNAMENT_ID_KEY, activeId)
-      return activeId
-    }
-  }
-  
-  const { data: playersData } = await supabase.from('players').select('id').limit(1)
-  if (playersData && playersData.length > 0) {
-    const { data: recentTournament } = await supabase
-      .from('tournaments')
-      .select('id')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
-    
-    if (recentTournament && recentTournament.id) {
-      localStorage.setItem(ACTIVE_TOURNAMENT_ID_KEY, recentTournament.id)
-      return recentTournament.id
+      setLocalAndUrlActiveTournamentId(storedId)
+      return storedId
     }
   }
 
@@ -65,7 +78,7 @@ export async function getActiveTournamentId(): Promise<string | null> {
     return null
   }
 
-  localStorage.setItem(ACTIVE_TOURNAMENT_ID_KEY, newTournament.id)
+  setLocalAndUrlActiveTournamentId(newTournament.id)
   return newTournament.id
 }
 
@@ -349,7 +362,7 @@ export async function loadTournamentState(): Promise<{
       .eq('tournament_id', tournamentId)
       .order('round_index')
 
-    const players: Player[] = (playersData || []).map((p) => ({
+    const allPlayers: Player[] = (playersData || []).map((p) => ({
       id: p.id,
       name: p.name,
     }))
@@ -366,6 +379,26 @@ export async function loadTournamentState(): Promise<{
       stage: m.stage as 'play_in' | 'semi' | 'final' | 'third_place' | undefined,
       comment: (m as { comment?: string }).comment ?? undefined,
     }))
+
+    // Active tournament roster should come from participants in this tournament's matches,
+    // not from the global players catalog.
+    const participantIds = new Set<string>()
+    for (const match of matches) {
+      participantIds.add(match.playerAId)
+      participantIds.add(match.playerBId)
+    }
+    for (const id of tournament?.knockout_seeds || []) {
+      if (id) participantIds.add(id)
+    }
+    for (const elimination of (tournament?.round_eliminations || []) as RoundElimination[]) {
+      if (elimination?.eliminatedPlayerId) participantIds.add(elimination.eliminatedPlayerId)
+    }
+
+    let players: Player[] = []
+    if (participantIds.size > 0) {
+      const allPlayersMap = new Map(allPlayers.map((p) => [p.id, p] as const))
+      players = Array.from(participantIds).map((id) => allPlayersMap.get(id) || { id, name: `Player ${id.slice(0, 8)}` })
+    }
 
     return {
       players,
@@ -594,7 +627,7 @@ export async function resetTournament(cityName: string): Promise<void> {
       return
     }
 
-    localStorage.setItem(ACTIVE_TOURNAMENT_ID_KEY, newTournament.id)
+    setLocalAndUrlActiveTournamentId(newTournament.id)
   } catch (error) {
     console.error('Failed to reset tournament:', error)
   }
@@ -688,7 +721,7 @@ export async function endTournament(): Promise<void> {
       return
     }
 
-    localStorage.setItem(ACTIVE_TOURNAMENT_ID_KEY, newTournament.id)
+    setLocalAndUrlActiveTournamentId(newTournament.id)
   } catch (error) {
     console.error('Failed to end tournament:', error)
   }

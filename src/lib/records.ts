@@ -74,13 +74,13 @@ export function computeRecords(matches: Match[], players: Player[]): Records {
         biggestWinEntries.push({
           winnerName: getName(m.playerBId),
           loserName: getName(m.playerAId),
-          score: `${sa}-${sb}`,
+          score: `${sb}-${sa}`,
         })
       }
     } else if (margin === biggestMargin && margin > 0 && (sa !== sb)) {
       const winner = sa > sb ? getName(m.playerAId) : getName(m.playerBId)
       const loser = sa > sb ? getName(m.playerBId) : getName(m.playerAId)
-      const score = `${sa}-${sb}`
+      const score = sa > sb ? `${sa}-${sb}` : `${sb}-${sa}`
       if (!biggestWinEntries.some((e) => e.winnerName === winner && e.loserName === loser && e.score === score)) {
         biggestWinEntries.push({ winnerName: winner, loserName: loser, score })
       }
