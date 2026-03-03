@@ -110,6 +110,20 @@ npm run dev
 
 **Note:** Vite loads `.env.local` first, then `.env`. So `.env.local` takes precedence.
 
+## Safety Guard (Prevents Accidental Production Writes)
+
+The app now **blocks writes** to production Supabase when running in dev mode and
+your `VITE_SUPABASE_URL` is not local.
+
+To avoid accidents:
+1. Keep production keys only in `.env` (for real deploys)
+2. Use `.env.local` for local Supabase testing
+
+If you intentionally want to write to production while running dev:
+```
+VITE_ALLOW_PROD_WRITE_IN_DEV=true
+```
+
 ## Troubleshooting
 
 ### "Docker not running"

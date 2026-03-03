@@ -34,23 +34,26 @@ export function computeRecords(matches: Match[], players: Player[]): Records {
     const sb = m.scoreB!
     const nameA = getName(m.playerAId)
     const nameB = getName(m.playerBId)
+    const addMostGoalsEntry = (playerName: string, opponentName: string, goalsFor: number, goalsAgainst: number) => {
+      const score = `${goalsFor}-${goalsAgainst}`
+      if (!mostGoalsEntries.some((e) => e.playerName === playerName && e.score === score)) {
+        mostGoalsEntries.push({ playerName, value: goalsFor, opponentName, score })
+      }
+    }
+
     if (sa > mostGoalsInOneGame) {
       mostGoalsInOneGame = sa
       mostGoalsEntries.length = 0
-      mostGoalsEntries.push({ playerName: nameA, value: sa, opponentName: nameB, score: `${sa}-${sb}` })
+      addMostGoalsEntry(nameA, nameB, sa, sb)
     } else if (sa === mostGoalsInOneGame && mostGoalsInOneGame > 0) {
-      if (!mostGoalsEntries.some((e) => e.playerName === nameA && e.score === `${sa}-${sb}`)) {
-        mostGoalsEntries.push({ playerName: nameA, value: sa, opponentName: nameB, score: `${sa}-${sb}` })
-      }
+      addMostGoalsEntry(nameA, nameB, sa, sb)
     }
     if (sb > mostGoalsInOneGame) {
       mostGoalsInOneGame = sb
       mostGoalsEntries.length = 0
-      mostGoalsEntries.push({ playerName: nameB, value: sb, opponentName: nameA, score: `${sa}-${sb}` })
+      addMostGoalsEntry(nameB, nameA, sb, sa)
     } else if (sb === mostGoalsInOneGame && mostGoalsInOneGame > 0) {
-      if (!mostGoalsEntries.some((e) => e.playerName === nameB && e.score === `${sa}-${sb}`)) {
-        mostGoalsEntries.push({ playerName: nameB, value: sb, opponentName: nameA, score: `${sa}-${sb}` })
-      }
+      addMostGoalsEntry(nameB, nameA, sb, sa)
     }
   }
 

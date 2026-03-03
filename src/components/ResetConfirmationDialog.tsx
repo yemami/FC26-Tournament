@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { reverseGeocode } from '../lib/geocoding'
+import { isProdSupabaseInDev } from '../lib/supabase'
 
 interface ResetConfirmationDialogProps {
   isOpen: boolean
@@ -12,13 +13,13 @@ export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel, testMode 
   const [isRequestingLocation, setIsRequestingLocation] = useState(false)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [locationDenied, setLocationDenied] = useState(false)
+  const allowWithoutLocation = testMode || !isProdSupabaseInDev
 
   if (!isOpen) return null
 
   const handleConfirm = async () => {
-    // In test mode, skip location requirement
-    if (testMode) {
-      onConfirm('Test Mode')
+    if (allowWithoutLocation) {
+      onConfirm(testMode ? 'Test Mode' : 'Local Dev')
       return
     }
 
@@ -98,17 +99,17 @@ export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel, testMode 
           <li>Go to setup to add new players</li>
           <li>Match history and head-to-head records are preserved</li>
         </ul>
-        {!testMode && (
+        {!allowWithoutLocation && (
           <div className="mb-4 rounded-card bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
             <p className="text-sm text-red-700 dark:text-red-300 font-semibold">
               ⚠️ Location sharing is REQUIRED. This helps track who started a new tournament. Cannot proceed without location access.
             </p>
           </div>
         )}
-        {testMode && (
+        {allowWithoutLocation && (
           <div className="mb-4 rounded-card bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4">
             <p className="text-sm text-amber-700 dark:text-amber-300 font-semibold">
-              🧪 Test Mode: Location requirement is bypassed for local testing.
+              🧪 Location requirement is bypassed for local testing.
             </p>
           </div>
         )}
@@ -118,7 +119,7 @@ export function ResetConfirmationDialog({ isOpen, onConfirm, onCancel, testMode 
           </div>
         )}
         <div className="flex flex-wrap gap-3">
-          {!testMode && locationDenied ? (
+          {!allowWithoutLocation && locationDenied ? (
             <button
               type="button"
               onClick={onCancel}

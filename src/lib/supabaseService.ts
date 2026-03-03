@@ -1,8 +1,17 @@
-import { supabase } from './supabase'
+import { supabase, isProdSupabaseInDev, allowUnsafeProdWritesInDev } from './supabase'
 import type { Player, Match, RoundElimination } from '../types'
 
 const ACTIVE_TOURNAMENT_ID_KEY = 'fc26-active-tournament-id'
 const TOURNAMENT_QUERY_PARAM = 't'
+
+function assertWriteAllowed(operation: string): void {
+  if (isProdSupabaseInDev && !allowUnsafeProdWritesInDev) {
+    throw new Error(
+      `Blocked write (${operation}): production Supabase is configured in dev. ` +
+      `Use .env.local with local Supabase, or set VITE_ALLOW_PROD_WRITE_IN_DEV=true if you really intend to write.`
+    )
+  }
+}
 
 function getTournamentIdFromUrl(): string | null {
   if (typeof window === 'undefined') return null
@@ -165,6 +174,7 @@ export type AddPlayerResult = { player: Player; isNew: boolean } | null
  */
 export async function addPlayerToDatabase(name: string): Promise<AddPlayerResult> {
   try {
+    assertWriteAllowed('addPlayerToDatabase')
     const trimmed = name.trim()
     if (!trimmed) return null
     const existing = await findPlayerByName(trimmed)
@@ -426,6 +436,7 @@ export async function loadTournamentState(): Promise<{
  */
 export async function savePlayers(players: Player[], preserveExisting: boolean = false): Promise<void> {
   try {
+    assertWriteAllowed('savePlayers')
     // Get existing players
     const { data: existingPlayers } = await supabase.from('players').select('id')
 
@@ -482,6 +493,7 @@ export async function savePlayers(players: Player[], preserveExisting: boolean =
  */
 export async function saveMatches(matches: Match[], preserveExisting: boolean = true): Promise<void> {
   try {
+    assertWriteAllowed('saveMatches')
     const tournamentId = await getActiveTournamentId()
     if (!tournamentId) return
 
@@ -557,6 +569,7 @@ export async function saveTournamentConfig(
   roundEliminations: RoundElimination[]
 ): Promise<void> {
   try {
+    assertWriteAllowed('saveTournamentConfig')
     const tournamentId = await getActiveTournamentId()
     if (!tournamentId) return
 
@@ -579,6 +592,7 @@ export async function saveTournamentConfig(
  */
 export async function resetTournament(cityName: string): Promise<void> {
   try {
+    assertWriteAllowed('resetTournament')
     const tournamentId = await getActiveTournamentId()
     if (!tournamentId) return
 
@@ -703,6 +717,7 @@ export async function migrateFromLocalStorage(): Promise<boolean> {
  */
 export async function endTournament(): Promise<void> {
   try {
+    assertWriteAllowed('endTournament')
     // Create a NEW tournament and set it as active - old tournament stays untouched
     // This preserves all matches and players for match history / head-to-head
     const { data: newTournament, error } = await supabase

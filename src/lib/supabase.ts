@@ -9,6 +9,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+const isLocalSupabaseUrl =
+  supabaseUrl.includes('localhost') ||
+  supabaseUrl.includes('127.0.0.1') ||
+  supabaseUrl.includes('0.0.0.0')
+
+export const isProdSupabaseInDev = import.meta.env.DEV && !isLocalSupabaseUrl
+export const allowUnsafeProdWritesInDev = import.meta.env.VITE_ALLOW_PROD_WRITE_IN_DEV === 'true'
+
 // Database types
 export interface DatabasePlayer {
   id: string
