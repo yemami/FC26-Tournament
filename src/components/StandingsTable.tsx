@@ -13,13 +13,13 @@ export function StandingsTable() {
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">#</th>
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">Player</th>
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">Pts</th>
+            <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">GD</th>
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">P</th>
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">W</th>
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">D</th>
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">L</th>
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">GF</th>
             <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">GA</th>
-            <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider">GD</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -40,15 +40,15 @@ export function StandingsTable() {
                 </div>
               </td>
               <td className="px-4 py-3 font-bold text-gray-900 dark:text-gray-100 text-base">{row.points}</td>
+              <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">
+                {row.goalDifference >= 0 ? '+' : ''}{row.goalDifference}
+              </td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">{row.played}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">{row.wins}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">{row.draws}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">{row.losses}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">{row.goalsFor}</td>
               <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-medium">{row.goalsAgainst}</td>
-              <td className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">
-                {row.goalDifference >= 0 ? '+' : ''}{row.goalDifference}
-              </td>
             </tr>
           ))}
         </tbody>
