@@ -60,3 +60,14 @@ export interface DatabaseResetHistory {
   city_name: string | null
   reset_at: string
 }
+
+export interface DatabaseActivityLog {
+  id: string
+  tournament_id: string
+  match_id: string | null
+  actor_id: string | null
+  actor_label: string | null
+  action: string
+  details: Record<string, unknown> | null
+  created_at?: string
+}

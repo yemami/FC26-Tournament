@@ -1,8 +1,11 @@
 import { supabase, isProdSupabaseInDev, allowUnsafeProdWritesInDev } from './supabase'
 import type { Player, Match, RoundElimination } from '../types'
+import type { ActivityAction, ActivityDetails, ActivityLogEntry } from './activity'
 
 const ACTIVE_TOURNAMENT_ID_KEY = 'fc26-active-tournament-id'
 const TOURNAMENT_QUERY_PARAM = 't'
+const ACTOR_ID_KEY = 'fc26-actor-id'
+const ACTOR_LABEL_KEY = 'fc26-actor-label'
 
 function assertWriteAllowed(operation: string): void {
   if (isProdSupabaseInDev && !allowUnsafeProdWritesInDev) {
@@ -143,6 +146,33 @@ function makeId(): string {
     const v = c === 'x' ? r : (r & 0x3) | 0x8
     return v.toString(16)
   })
+}
+
+function getOrCreateActorId(): string {
+  if (typeof window === 'undefined') return 'unknown'
+  const existing = localStorage.getItem(ACTOR_ID_KEY)
+  if (existing) return existing
+  const created = makeId()
+  localStorage.setItem(ACTOR_ID_KEY, created)
+  return created
+}
+
+export function getActorLabel(): string {
+  if (typeof window === 'undefined') return 'Unknown'
+  const stored = localStorage.getItem(ACTOR_LABEL_KEY)
+  if (stored && stored.trim()) return stored.trim()
+  const actorId = getOrCreateActorId()
+  return `Device ${actorId.slice(0, 4).toUpperCase()}`
+}
+
+export function setActorLabel(label: string): void {
+  if (typeof window === 'undefined') return
+  const trimmed = label.trim()
+  if (trimmed) {
+    localStorage.setItem(ACTOR_LABEL_KEY, trimmed)
+  } else {
+    localStorage.removeItem(ACTOR_LABEL_KEY)
+  }
 }
 
 /**
@@ -644,6 +674,49 @@ export async function resetTournament(cityName: string): Promise<void> {
     setLocalAndUrlActiveTournamentId(newTournament.id)
   } catch (error) {
     console.error('Failed to reset tournament:', error)
+  }
+}
+
+export async function logMatchActivity(matchId: string, action: ActivityAction, details: ActivityDetails): Promise<void> {
+  try {
+    assertWriteAllowed('logMatchActivity')
+    const tournamentId = await getActiveTournamentId()
+    if (!tournamentId) return
+    const actorId = getOrCreateActorId()
+    const actorLabel = getActorLabel()
+    await supabase.from('activity_log').insert({
+      tournament_id: tournamentId,
+      match_id: matchId,
+      actor_id: actorId,
+      actor_label: actorLabel,
+      action,
+      details,
+    })
+  } catch (error) {
+    console.error('Failed to log match activity:', error)
+  }
+}
+
+export async function getActivityLog(tournamentId?: string): Promise<ActivityLogEntry[]> {
+  try {
+    const resolvedTournamentId = tournamentId ?? await getActiveTournamentId()
+    if (!resolvedTournamentId) return []
+    const { data, error } = await supabase
+      .from('activity_log')
+      .select('*')
+      .eq('tournament_id', resolvedTournamentId)
+      .order('created_at', { ascending: false })
+      .limit(250)
+
+    if (error) {
+      console.error('Failed to load activity log:', error)
+      return []
+    }
+
+    return (data || []) as ActivityLogEntry[]
+  } catch (error) {
+    console.error('Failed to load activity log:', error)
+    return []
   }
 }
 

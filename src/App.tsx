@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { TournamentProvider, useTournament } from './context/TournamentContext'
 import { PlayerSetup } from './components/PlayerSetup'
 import { RoundList } from './components/RoundList'
@@ -9,22 +9,33 @@ import { Podium } from './components/Podium'
 import { ResetConfirmationDialog } from './components/ResetConfirmationDialog'
 import { NewMatchDialog } from './components/NewMatchDialog'
 import { ResetHistory } from './components/ResetHistory'
+import { ActivityLog } from './components/ActivityLog'
 import { HeadToHead } from './components/HeadToHead'
 import { MatchHistory } from './components/MatchHistory'
 import { Records } from './components/Records'
+import { ToastStack } from './components/ToastStack'
 import { useDarkMode } from './hooks/useDarkMode'
+import { supabase } from './lib/supabase'
+import { getActiveTournamentId } from './lib/supabaseService'
+import { formatActivityToast, type ActivityLogEntry } from './lib/activity'
+import type { Match, Player } from './types'
 
 function AppContent() {
-  const { matches, isLoading, resetTournament, rematch, knockoutResults } = useTournament()
+  const { matches, players, isLoading, resetTournament, rematch, knockoutResults } = useTournament()
   const { isDark, toggle: toggleDarkMode } = useDarkMode()
   const [showKey, setShowKey] = useState(false)
   const [testMode, setTestMode] = useState(false)
   const [showResetDialog, setShowResetDialog] = useState(false)
   const [showNewMatchDialog, setShowNewMatchDialog] = useState(false)
   const [showResetHistory, setShowResetHistory] = useState(false)
+  const [showActivityLog, setShowActivityLog] = useState(false)
   const [showHeadToHead, setShowHeadToHead] = useState(false)
   const [showMatchHistory, setShowMatchHistory] = useState(false)
   const [showRecords, setShowRecords] = useState(false)
+  const [toasts, setToasts] = useState<{ id: string; message: string }[]>([])
+  const toastTimeouts = useRef<Map<string, number>>(new Map())
+  const matchesRef = useRef<Map<string, Match>>(new Map())
+  const playersRef = useRef<Map<string, Player>>(new Map())
   // Show tournament view only if matches exist (tournament has started)
   // If no matches exist, show setup page (even if players exist - they can be added before starting)
   const inTournament = matches.length > 0
@@ -48,7 +59,78 @@ function AppContent() {
     setShowMatchHistory(false)
     setShowRecords(false)
     setShowResetHistory(false)
+    setShowActivityLog(false)
   }
+
+  useEffect(() => {
+    matchesRef.current = new Map(matches.map((m) => [m.id, m]))
+  }, [matches])
+
+  useEffect(() => {
+    playersRef.current = new Map(players.map((p) => [p.id, p]))
+  }, [players])
+
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id))
+    const timeoutId = toastTimeouts.current.get(id)
+    if (timeoutId) {
+      window.clearTimeout(timeoutId)
+      toastTimeouts.current.delete(id)
+    }
+  }, [])
+
+  const pushToast = useCallback((id: string, message: string) => {
+    setToasts((prev) => {
+      if (prev.some((toast) => toast.id === id)) return prev
+      const next = [{ id, message }, ...prev]
+      return next.slice(0, 4)
+    })
+    const timeoutId = window.setTimeout(() => dismissToast(id), 4500)
+    toastTimeouts.current.set(id, timeoutId)
+  }, [dismissToast])
+
+  useEffect(() => {
+    return () => {
+      toastTimeouts.current.forEach((timeoutId) => window.clearTimeout(timeoutId))
+      toastTimeouts.current.clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isLoading) return
+    let cancelled = false
+    let channel: ReturnType<typeof supabase.channel> | null = null
+
+    ;(async () => {
+      const tournamentId = await getActiveTournamentId()
+      if (cancelled || !tournamentId) return
+
+      channel = supabase
+        .channel(`activity-log-${tournamentId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'activity_log',
+            filter: `tournament_id=eq.${tournamentId}`,
+          },
+          (payload) => {
+            const entry = payload.new as ActivityLogEntry
+            const message = formatActivityToast(entry, matchesRef.current, playersRef.current)
+            if (message) pushToast(entry.id, message)
+          }
+        )
+        .subscribe()
+    })()
+
+    return () => {
+      cancelled = true
+      if (channel) {
+        void supabase.removeChannel(channel)
+      }
+    }
+  }, [isLoading, pushToast])
 
   // Tournament is complete when knockout results exist (final has been played)
   const tournamentComplete = !!knockoutResults
@@ -100,6 +182,13 @@ function AppContent() {
                 className="rounded-button bg-gray-100 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 History
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowActivityLog(true)}
+                className="rounded-button bg-gray-100 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                Activity
               </button>
               <button
                 type="button"
@@ -192,6 +281,12 @@ function AppContent() {
         hasOngoingGame={inTournament}
         onGoToOngoingGame={handleBackToOngoingGame}
       />
+      <ActivityLog
+        isOpen={showActivityLog}
+        onClose={() => setShowActivityLog(false)}
+        hasOngoingGame={inTournament}
+        onGoToOngoingGame={handleBackToOngoingGame}
+      />
       <HeadToHead
         isOpen={showHeadToHead}
         onClose={() => setShowHeadToHead(false)}
@@ -210,6 +305,7 @@ function AppContent() {
         hasOngoingGame={inTournament}
         onGoToOngoingGame={handleBackToOngoingGame}
       />
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

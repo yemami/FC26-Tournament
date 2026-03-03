@@ -29,6 +29,7 @@ import {
   resetTournament as resetTournamentInDB,
   endTournament as endTournamentInDB,
   migrateFromLocalStorage,
+  logMatchActivity,
 } from '../lib/supabaseService'
 import { calculateHeadToHeadByName, getWinPrediction, type WinPrediction } from '../lib/headToHead'
 
@@ -389,17 +390,51 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const setMatchScore = useCallback(async (matchId: string, scoreA: number, scoreB: number) => {
     const tournamentId = await getActiveTournamentId()
     const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
+    let activityPayload:
+      | {
+          action: 'score_set' | 'score_edit'
+          details: {
+            playerAId: string
+            playerBId: string
+            roundIndex: number
+            stage?: string
+            prevScoreA: number | null
+            prevScoreB: number | null
+            scoreA: number
+            scoreB: number
+          }
+        }
+      | null = null
+
     markLocalMutation()
     setState((s) => {
       const match = s.matches.find((m) => m.id === matchId)
       if (!match) return s
-      
+
+      const prevScoreA = match.scoreA
+      const prevScoreB = match.scoreB
+
       // Check if this is a group stage match (not knockout)
       const isGroupStageMatch = !match.stage && match.roundIndex >= 0
       if (match.isGoldenGoal) {
         if (scoreA + scoreB !== 1 || (scoreA !== 0 && scoreA !== 1)) return s
         const sa = scoreA >= 1 ? 1 : 0
         const sb = scoreB >= 1 ? 1 : 0
+        if (prevScoreA !== sa || prevScoreB !== sb) {
+          activityPayload = {
+            action: prevScoreA === null && prevScoreB === null ? 'score_set' : 'score_edit',
+            details: {
+              playerAId: match.playerAId,
+              playerBId: match.playerBId,
+              roundIndex: match.roundIndex,
+              stage: match.stage,
+              prevScoreA,
+              prevScoreB,
+              scoreA: sa,
+              scoreB: sb,
+            },
+          }
+        }
         return {
           ...s,
           matches: s.matches.map((m) =>
@@ -407,6 +442,23 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
           ),
         }
       }
+
+      if (prevScoreA !== scoreA || prevScoreB !== scoreB) {
+        activityPayload = {
+          action: prevScoreA === null && prevScoreB === null ? 'score_set' : 'score_edit',
+          details: {
+            playerAId: match.playerAId,
+            playerBId: match.playerBId,
+            roundIndex: match.roundIndex,
+            stage: match.stage,
+            prevScoreA,
+            prevScoreB,
+            scoreA,
+            scoreB,
+          },
+        }
+      }
+
       let next = {
         ...s,
         matches: s.matches.map((m) =>
@@ -621,16 +673,69 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }
       return next
     })
+
+    if (activityPayload) {
+      void logMatchActivity(matchId, activityPayload.action, activityPayload.details)
+    }
   }, [markLocalMutation])
 
   const setMatchComment = useCallback((matchId: string, comment: string) => {
+    let activityPayload:
+      | {
+          action: 'comment_set' | 'comment_edit' | 'comment_clear'
+          details: {
+            playerAId: string
+            playerBId: string
+            roundIndex: number
+            stage?: string
+            prevComment: string | null
+            comment: string | null
+          }
+        }
+      | null = null
+
     markLocalMutation()
-    setState((s) => ({
-      ...s,
-      matches: s.matches.map((m) =>
-        m.id === matchId ? { ...m, comment: comment.trim() || undefined } : m
-      ),
-    }))
+    setState((s) => {
+      const match = s.matches.find((m) => m.id === matchId)
+      if (!match) return s
+
+      const nextComment = comment.trim() || undefined
+      const prevComment = match.comment ?? null
+      const normalizedNext = nextComment ?? null
+
+      if (prevComment !== normalizedNext) {
+        let action: 'comment_set' | 'comment_edit' | 'comment_clear'
+        if (!prevComment && normalizedNext) {
+          action = 'comment_set'
+        } else if (prevComment && !normalizedNext) {
+          action = 'comment_clear'
+        } else {
+          action = 'comment_edit'
+        }
+        activityPayload = {
+          action,
+          details: {
+            playerAId: match.playerAId,
+            playerBId: match.playerBId,
+            roundIndex: match.roundIndex,
+            stage: match.stage,
+            prevComment,
+            comment: normalizedNext,
+          },
+        }
+      }
+
+      return {
+        ...s,
+        matches: s.matches.map((m) =>
+          m.id === matchId ? { ...m, comment: nextComment } : m
+        ),
+      }
+    })
+
+    if (activityPayload) {
+      void logMatchActivity(matchId, activityPayload.action, activityPayload.details)
+    }
   }, [markLocalMutation])
 
   const resetTournament = useCallback(async (cityName: string) => {
