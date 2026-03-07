@@ -79,7 +79,7 @@ type TournamentContextValue = {
   startTournament: () => void | Promise<void>
   setMatchScore: (matchId: string, scoreA: number, scoreB: number) => void | Promise<void>
   setMatchComment: (matchId: string, comment: string) => void
-  resetTournament: (cityName: string) => Promise<void>
+  resetTournament: (cityName?: string | null) => Promise<void>
   endTournament: () => Promise<void>
   rematch: () => Promise<void>
   setKnockoutPlayerCount: (count: number) => void
@@ -724,8 +724,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     }
   }, [markLocalMutation])
 
-  const resetTournament = useCallback(async (cityName: string) => {
-    await resetTournamentInDB(cityName)
+  const resetTournament = useCallback(async (cityName?: string | null) => {
+    await resetTournamentInDB(cityName ?? null)
     setState((s) => ({ 
       ...s, 
       players: [],

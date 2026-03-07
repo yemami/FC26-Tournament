@@ -58,6 +58,8 @@ export interface DatabaseResetHistory {
   id: string
   tournament_id: string
   city_name: string | null
+  actor_id: string | null
+  actor_label: string | null
   reset_at: string
 }
 

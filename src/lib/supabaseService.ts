@@ -643,16 +643,22 @@ export async function saveTournamentConfig(
  * Reset tournament (delete all matches, players, and reset config)
  * @param cityName - City name to record where the reset was performed (required)
  */
-export async function resetTournament(cityName: string): Promise<void> {
+export async function resetTournament(cityName: string | null): Promise<void> {
   try {
     assertWriteAllowed('resetTournament')
     const tournamentId = await getActiveTournamentId()
     if (!tournamentId) return
 
+    const authActor = await getAuthActorInfo()
+    const actorId = authActor?.actorId ?? getOrCreateActorId()
+    const actorLabel = authActor?.actorLabel ?? getActorLabel()
+
     // Record reset history before resetting
     await supabase.from('reset_history').insert({
       tournament_id: tournamentId,
       city_name: cityName,
+      actor_id: actorId,
+      actor_label: actorLabel,
       // reset_at will be automatically set by DEFAULT NOW() in the database
     })
 

@@ -91,14 +91,22 @@ export function ResetHistory({ isOpen, onClose, hasOngoingGame = false, onGoToOn
                       <div className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                         {formatDate(record.reset_at)}
                       </div>
-                      {record.city_name ? (
+                      <div className="flex flex-wrap items-center gap-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500 dark:text-gray-400">Location:</span>
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{record.city_name}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">By:</span>
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {record.actor_label || 'Unknown'}
+                          </span>
                         </div>
-                      ) : (
-                        <div className="text-xs text-gray-400 dark:text-gray-500">Location not available</div>
-                      )}
+                        {record.city_name ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">Location:</span>
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{record.city_name}</span>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400 dark:text-gray-500">Location not recorded</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

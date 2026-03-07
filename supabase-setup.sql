@@ -103,12 +103,15 @@ CREATE TABLE IF NOT EXISTS reset_history (
   id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
   tournament_id TEXT NOT NULL, -- Store as TEXT to match our app's ID format
   city_name TEXT, -- City name from reverse geocoding
+  actor_id TEXT,
+  actor_label TEXT,
   reset_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Create index for reset history queries
 CREATE INDEX IF NOT EXISTS idx_reset_history_tournament_id ON reset_history(tournament_id);
 CREATE INDEX IF NOT EXISTS idx_reset_history_reset_at ON reset_history(reset_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reset_history_actor_id ON reset_history(actor_id);
 
 -- Enable RLS for reset_history
 ALTER TABLE reset_history ENABLE ROW LEVEL SECURITY;
