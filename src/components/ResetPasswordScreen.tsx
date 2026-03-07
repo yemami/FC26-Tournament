@@ -9,18 +9,39 @@ export function ResetPasswordScreen() {
   const [success, setSuccess] = useState(false)
 
   useEffect(() => {
-    const url = new URL(window.location.href)
-    const code = url.searchParams.get('code')
-    if (!code) return
+    const run = async () => {
+      const url = new URL(window.location.href)
+      const code = url.searchParams.get('code')
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      const accessToken = hashParams.get('access_token')
+      const refreshToken = hashParams.get('refresh_token')
 
-    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-      if (error) {
-        setError(error.message)
-      } else {
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+        if (error) {
+          setError(error.message)
+          return
+        }
+        url.hash = ''
+        window.history.replaceState({}, '', url.toString())
+        return
+      }
+
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error) {
+          setError(error.message)
+          return
+        }
         url.searchParams.delete('code')
         window.history.replaceState({}, '', url.toString())
       }
-    })
+    }
+
+    void run()
   }, [])
 
   const handleUpdate = async () => {
