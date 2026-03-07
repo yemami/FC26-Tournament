@@ -7,6 +7,7 @@ export function ResetPasswordScreen() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
 
   useEffect(() => {
     const run = async () => {
@@ -74,6 +75,16 @@ export function ResetPasswordScreen() {
     }
   }
 
+  const handleBackToSignIn = async () => {
+    setIsRedirecting(true)
+    await supabase.auth.signOut()
+    window.location.href = '/'
+  }
+
+  const handleGoToApp = () => {
+    window.location.href = '/'
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md rounded-card bg-white dark:bg-gray-800 shadow-card dark:shadow-none dark:border dark:border-gray-700 p-8 space-y-6">
@@ -114,8 +125,25 @@ export function ResetPasswordScreen() {
         )}
 
         {success ? (
-          <div className="rounded-card border border-neobank-lime/40 bg-neobank-lime/10 px-4 py-3 text-sm text-neobank-lime">
-            Password updated. You can sign in now.
+          <div className="space-y-3">
+            <div className="rounded-card border border-neobank-lime/40 bg-neobank-lime/10 px-4 py-3 text-sm text-neobank-lime">
+              Password updated. Choose where to go next.
+            </div>
+            <button
+              type="button"
+              onClick={handleBackToSignIn}
+              disabled={isRedirecting}
+              className="rounded-button bg-gray-900 dark:bg-gray-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 dark:hover:bg-gray-600 disabled:opacity-50"
+            >
+              {isRedirecting ? 'Signing out...' : 'Back to sign in'}
+            </button>
+            <button
+              type="button"
+              onClick={handleGoToApp}
+              className="rounded-button bg-neobank-lime px-4 py-2.5 text-sm font-semibold text-white hover:bg-neobank-lime-dark"
+            >
+              Go to app
+            </button>
           </div>
         ) : (
           <button
