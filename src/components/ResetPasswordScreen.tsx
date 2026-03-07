@@ -111,10 +111,6 @@ export function ResetPasswordScreen() {
     window.location.href = '/'
   }
 
-  const handleGoToApp = () => {
-    window.location.href = '/'
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md rounded-card bg-white dark:bg-gray-800 shadow-card dark:shadow-none dark:border dark:border-gray-700 p-8 space-y-6">
