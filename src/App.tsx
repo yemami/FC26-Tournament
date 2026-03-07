@@ -11,6 +11,7 @@ import { NewMatchDialog } from './components/NewMatchDialog'
 import { ResetHistory } from './components/ResetHistory'
 import { ActivityLog } from './components/ActivityLog'
 import { AuthScreen } from './components/AuthScreen'
+import { ResetPasswordScreen } from './components/ResetPasswordScreen'
 import { HeadToHead } from './components/HeadToHead'
 import { MatchHistory } from './components/MatchHistory'
 import { Records } from './components/Records'
@@ -503,6 +504,10 @@ export default function App() {
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 dark:border-gray-700 border-t-neobank-lime"></div>
       </div>
     )
+  }
+
+  if (window.location.pathname === '/reset-password') {
+    return <ResetPasswordScreen />
   }
 
   if (!session) {

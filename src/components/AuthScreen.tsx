@@ -13,6 +13,7 @@ export function AuthScreen() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [resetSent, setResetSent] = useState(false)
 
   const handleEmailAuth = async () => {
     const trimmedEmail = email.trim()
@@ -73,6 +74,34 @@ export function AuthScreen() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handlePasswordReset = async () => {
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) {
+      setError('Enter your email to reset your password.')
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+    setInfo(null)
+
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+      if (resetError) {
+        setError(resetError.message)
+        return
+      }
+      setResetSent(true)
+      setInfo('Password reset email sent. Check your inbox.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send reset email.')
     } finally {
       setIsLoading(false)
     }
@@ -182,6 +211,16 @@ export function AuthScreen() {
         >
           {isLoading ? 'Working...' : mode === 'signup' ? 'Create account' : 'Sign in'}
         </button>
+        {mode === 'signin' && (
+          <button
+            type="button"
+            onClick={handlePasswordReset}
+            disabled={isLoading}
+            className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
+          >
+            {resetSent ? 'Reset email sent' : 'Forgot password?'}
+          </button>
+        )}
       </div>
     </div>
   )

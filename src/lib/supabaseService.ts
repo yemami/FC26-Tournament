@@ -733,16 +733,14 @@ export async function logMatchActivity(matchId: string, action: ActivityAction, 
   }
 }
 
-export async function getActivityLog(tournamentId?: string): Promise<ActivityLogEntry[]> {
+export async function getActivityLog(tournamentId?: string | null): Promise<ActivityLogEntry[]> {
   try {
-    const resolvedTournamentId = tournamentId ?? await getActiveTournamentId()
-    if (!resolvedTournamentId) return []
-    const { data, error } = await supabase
-      .from('activity_log')
-      .select('*')
-      .eq('tournament_id', resolvedTournamentId)
-      .order('created_at', { ascending: false })
-      .limit(250)
+    const resolvedTournamentId = typeof tournamentId === 'undefined' ? await getActiveTournamentId() : tournamentId
+    let query = supabase.from('activity_log').select('*')
+    if (resolvedTournamentId) {
+      query = query.eq('tournament_id', resolvedTournamentId)
+    }
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(250)
 
     if (error) {
       console.error('Failed to load activity log:', error)

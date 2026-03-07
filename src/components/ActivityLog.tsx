@@ -89,7 +89,7 @@ export function ActivityLog({ isOpen, onClose, hasOngoingGame = false, onGoToOng
   const loadHistory = async () => {
     setIsLoading(true)
     try {
-      const data = await getActivityLog()
+      const data = await getActivityLog(null)
       setHistory(data)
     } catch (error) {
       console.error('Failed to load activity log:', error)
