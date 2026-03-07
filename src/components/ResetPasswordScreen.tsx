@@ -10,6 +10,7 @@ export function ResetPasswordScreen() {
   const [isRedirecting, setIsRedirecting] = useState(false)
   const [sessionReady, setSessionReady] = useState(false)
   const [resetToken, setResetToken] = useState<string | null>(null)
+  const [reuseBlocked, setReuseBlocked] = useState(false)
 
   useEffect(() => {
     const run = async () => {
@@ -22,10 +23,11 @@ export function ResetPasswordScreen() {
       setResetToken(token)
 
       if (token) {
-        const usedToken = sessionStorage.getItem('fc26-reset-used-token')
+        const usedToken = localStorage.getItem('fc26-reset-used-token')
         if (usedToken === token) {
           setError('This reset link was already used. Request a new reset email.')
           setSessionReady(false)
+          setReuseBlocked(true)
           return
         }
       }
@@ -94,7 +96,7 @@ export function ResetPasswordScreen() {
         return
       }
       if (resetToken) {
-        sessionStorage.setItem('fc26-reset-used-token', resetToken)
+        localStorage.setItem('fc26-reset-used-token', resetToken)
       }
       await supabase.auth.signOut()
       setSuccess(true)
@@ -108,7 +110,7 @@ export function ResetPasswordScreen() {
   const handleBackToSignIn = async () => {
     setIsRedirecting(true)
     await supabase.auth.signOut()
-    window.location.href = '/'
+    window.location.replace('/')
   }
 
   return (
@@ -168,7 +170,7 @@ export function ResetPasswordScreen() {
           <button
             type="button"
             onClick={handleUpdate}
-            disabled={isLoading || !sessionReady}
+            disabled={isLoading || !sessionReady || reuseBlocked}
             className="rounded-button bg-neobank-lime px-4 py-2.5 text-sm font-semibold text-white hover:bg-neobank-lime-dark disabled:opacity-50"
           >
             {isLoading ? 'Updating...' : 'Update password'}
