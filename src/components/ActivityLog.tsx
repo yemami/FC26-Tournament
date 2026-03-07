@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTournament } from '../context/TournamentContext'
 import { supabase } from '../lib/supabase'
-import { getActiveTournamentId, getActivityLog, getActorLabel, setActorLabel } from '../lib/supabaseService'
+import { getActiveTournamentId, getActivityLog, setActorLabel } from '../lib/supabaseService'
 import { describeActivity, type ActivityLogEntry } from '../lib/activity'
 
 interface ActivityLogProps {
@@ -22,9 +22,31 @@ export function ActivityLog({ isOpen, onClose, hasOngoingGame = false, onGoToOng
 
   useEffect(() => {
     if (!isOpen) return
-    setActorLabelInput(getActorLabel())
     void loadHistory()
+    void loadProfileName()
   }, [isOpen])
+
+  const loadProfileName = async () => {
+    try {
+      const { data } = await supabase.auth.getUser()
+      const displayName =
+        (data.user?.user_metadata?.display_name as string | undefined) ||
+        (data.user?.user_metadata?.full_name as string | undefined) ||
+        (data.user?.user_metadata?.name as string | undefined) ||
+        ''
+      if (displayName.trim()) {
+        setActorLabelInput(displayName.trim())
+        return
+      }
+      if (data.user?.email) {
+        setActorLabelInput(data.user.email)
+      } else if (data.user?.phone) {
+        setActorLabelInput(data.user.phone)
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     if (!isOpen) return
@@ -77,7 +99,10 @@ export function ActivityLog({ isOpen, onClose, hasOngoingGame = false, onGoToOng
   }
 
   const handleSaveActorLabel = () => {
-    setActorLabel(actorLabelInput)
+    const trimmed = actorLabelInput.trim()
+    if (!trimmed) return
+    setActorLabel(trimmed)
+    void supabase.auth.updateUser({ data: { display_name: trimmed } })
   }
 
   const formatDate = (dateString?: string) => {
@@ -128,7 +153,7 @@ export function ActivityLog({ isOpen, onClose, hasOngoingGame = false, onGoToOng
         <div className="border-b border-gray-200 dark:border-gray-700 p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Your name</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Profile name</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">This label appears in the activity log for your changes.</p>
             </div>
             <div className="flex w-full max-w-sm items-center gap-2">
@@ -139,13 +164,13 @@ export function ActivityLog({ isOpen, onClose, hasOngoingGame = false, onGoToOng
                 placeholder="Enter your name"
                 className="flex-1 rounded-button border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-neobank-lime focus:outline-none transition-colors"
               />
-              <button
-                type="button"
-                onClick={handleSaveActorLabel}
-                className="rounded-button bg-neobank-lime px-4 py-2 text-sm font-semibold text-white hover:bg-neobank-lime-dark transition-colors"
-              >
-                Save
-              </button>
+            <button
+              type="button"
+              onClick={handleSaveActorLabel}
+              className="rounded-button bg-neobank-lime px-4 py-2 text-sm font-semibold text-white hover:bg-neobank-lime-dark transition-colors"
+            >
+              Save
+            </button>
             </div>
           </div>
         </div>

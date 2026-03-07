@@ -175,6 +175,26 @@ export function setActorLabel(label: string): void {
   }
 }
 
+async function getAuthActorInfo(): Promise<{ actorId: string; actorLabel: string } | null> {
+  try {
+    const { data } = await supabase.auth.getUser()
+    const user = data.user
+    if (!user) return null
+    const displayName =
+      (user.user_metadata?.display_name as string | undefined) ||
+      (user.user_metadata?.full_name as string | undefined) ||
+      (user.user_metadata?.name as string | undefined) ||
+      ''
+    const fallback = user.email || user.phone || `User ${user.id.slice(0, 4).toUpperCase()}`
+    return {
+      actorId: user.id,
+      actorLabel: displayName.trim() ? displayName.trim() : fallback,
+    }
+  } catch {
+    return null
+  }
+}
+
 /**
  * Seed sample players into the database if it's empty.
  * Runs on app init so new users have players to select from.
@@ -401,6 +421,8 @@ export async function loadTournamentState(): Promise<{
       .select('*')
       .eq('tournament_id', tournamentId)
       .order('round_index')
+      .order('created_at')
+      .order('id')
 
     const allPlayers: Player[] = (playersData || []).map((p) => ({
       id: p.id,
@@ -417,6 +439,7 @@ export async function loadTournamentState(): Promise<{
       status: m.status as 'pending' | 'played' | 'golden_goal',
       isGoldenGoal: m.is_golden_goal,
       stage: m.stage as 'play_in' | 'semi' | 'final' | 'third_place' | undefined,
+      created_at: m.created_at as string | undefined,
       comment: (m as { comment?: string }).comment ?? undefined,
     }))
 
@@ -677,14 +700,15 @@ export async function resetTournament(cityName: string): Promise<void> {
   }
 }
 
-export async function logMatchActivity(matchId: string, action: ActivityAction, details: ActivityDetails): Promise<void> {
+export async function logMatchActivity(matchId: string, action: ActivityAction, details: ActivityDetails): Promise<boolean> {
   try {
     assertWriteAllowed('logMatchActivity')
     const tournamentId = await getActiveTournamentId()
-    if (!tournamentId) return
-    const actorId = getOrCreateActorId()
-    const actorLabel = getActorLabel()
-    await supabase.from('activity_log').insert({
+    if (!tournamentId) return false
+    const authActor = await getAuthActorInfo()
+    const actorId = authActor?.actorId ?? getOrCreateActorId()
+    const actorLabel = authActor?.actorLabel ?? getActorLabel()
+    const { error } = await supabase.from('activity_log').insert({
       tournament_id: tournamentId,
       match_id: matchId,
       actor_id: actorId,
@@ -692,8 +716,14 @@ export async function logMatchActivity(matchId: string, action: ActivityAction, 
       action,
       details,
     })
+    if (error) {
+      console.error('Failed to log match activity:', error)
+      return false
+    }
+    return true
   } catch (error) {
     console.error('Failed to log match activity:', error)
+    return false
   }
 }
 

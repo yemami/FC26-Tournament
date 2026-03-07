@@ -32,6 +32,8 @@ import {
   logMatchActivity,
 } from '../lib/supabaseService'
 import { calculateHeadToHeadByName, getWinPrediction, type WinPrediction } from '../lib/headToHead'
+import type { ActivityAction, ActivityDetails } from '../lib/activity'
+import { emitToast } from '../lib/toastBus'
 
 interface TournamentState {
   players: Player[]
@@ -390,21 +392,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const setMatchScore = useCallback(async (matchId: string, scoreA: number, scoreB: number) => {
     const tournamentId = await getActiveTournamentId()
     const idPrefix = tournamentId ? `${tournamentId}-${Date.now()}-` : ''
-    let activityPayload:
-      | {
-          action: 'score_set' | 'score_edit'
-          details: {
-            playerAId: string
-            playerBId: string
-            roundIndex: number
-            stage?: string
-            prevScoreA: number | null
-            prevScoreB: number | null
-            scoreA: number
-            scoreB: number
-          }
-        }
-      | null = null
+    let activityPayload: { action: ActivityAction; details: ActivityDetails } | null = null
 
     markLocalMutation()
     setState((s) => {
@@ -674,25 +662,18 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       return next
     })
 
-    if (activityPayload) {
-      void logMatchActivity(matchId, activityPayload.action, activityPayload.details)
+    const payload = activityPayload as { action: ActivityAction; details: ActivityDetails } | null
+    if (payload) {
+      void logMatchActivity(matchId, payload.action, payload.details).then((ok) => {
+        if (!ok) {
+          emitToast('Activity log failed to save. Check the database migration.', 'error')
+        }
+      })
     }
   }, [markLocalMutation])
 
   const setMatchComment = useCallback((matchId: string, comment: string) => {
-    let activityPayload:
-      | {
-          action: 'comment_set' | 'comment_edit' | 'comment_clear'
-          details: {
-            playerAId: string
-            playerBId: string
-            roundIndex: number
-            stage?: string
-            prevComment: string | null
-            comment: string | null
-          }
-        }
-      | null = null
+    let activityPayload: { action: ActivityAction; details: ActivityDetails } | null = null
 
     markLocalMutation()
     setState((s) => {
@@ -704,7 +685,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       const normalizedNext = nextComment ?? null
 
       if (prevComment !== normalizedNext) {
-        let action: 'comment_set' | 'comment_edit' | 'comment_clear'
+        let action: ActivityAction
         if (!prevComment && normalizedNext) {
           action = 'comment_set'
         } else if (prevComment && !normalizedNext) {
@@ -733,8 +714,13 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    if (activityPayload) {
-      void logMatchActivity(matchId, activityPayload.action, activityPayload.details)
+    const payload = activityPayload as { action: ActivityAction; details: ActivityDetails } | null
+    if (payload) {
+      void logMatchActivity(matchId, payload.action, payload.details).then((ok) => {
+        if (!ok) {
+          emitToast('Activity log failed to save. Check the database migration.', 'error')
+        }
+      })
     }
   }, [markLocalMutation])
 

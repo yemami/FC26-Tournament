@@ -10,6 +10,7 @@ import { ResetConfirmationDialog } from './components/ResetConfirmationDialog'
 import { NewMatchDialog } from './components/NewMatchDialog'
 import { ResetHistory } from './components/ResetHistory'
 import { ActivityLog } from './components/ActivityLog'
+import { AuthScreen } from './components/AuthScreen'
 import { HeadToHead } from './components/HeadToHead'
 import { MatchHistory } from './components/MatchHistory'
 import { Records } from './components/Records'
@@ -19,6 +20,8 @@ import { supabase } from './lib/supabase'
 import { getActiveTournamentId } from './lib/supabaseService'
 import { formatActivityToast, type ActivityLogEntry } from './lib/activity'
 import type { Match, Player } from './types'
+import { onToast } from './lib/toastBus'
+import { useAuthSession } from './hooks/useAuthSession'
 
 function AppContent() {
   const { matches, players, isLoading, resetTournament, rematch, knockoutResults } = useTournament()
@@ -32,7 +35,7 @@ function AppContent() {
   const [showHeadToHead, setShowHeadToHead] = useState(false)
   const [showMatchHistory, setShowMatchHistory] = useState(false)
   const [showRecords, setShowRecords] = useState(false)
-  const [toasts, setToasts] = useState<{ id: string; message: string }[]>([])
+  const [toasts, setToasts] = useState<{ id: string; message: string; kind?: 'info' | 'error' }[]>([])
   const toastTimeouts = useRef<Map<string, number>>(new Map())
   const matchesRef = useRef<Map<string, Match>>(new Map())
   const playersRef = useRef<Map<string, Player>>(new Map())
@@ -62,6 +65,11 @@ function AppContent() {
     setShowActivityLog(false)
   }
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+  }
+
+
   useEffect(() => {
     matchesRef.current = new Map(matches.map((m) => [m.id, m]))
   }, [matches])
@@ -89,12 +97,25 @@ function AppContent() {
     toastTimeouts.current.set(id, timeoutId)
   }, [dismissToast])
 
+  const pushToastWithKind = useCallback((message: string, kind: 'info' | 'error' = 'info') => {
+    const id = `toast-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`
+    setToasts((prev) => [{ id, message, kind }, ...prev].slice(0, 4))
+    const timeoutId = window.setTimeout(() => dismissToast(id), 4500)
+    toastTimeouts.current.set(id, timeoutId)
+  }, [dismissToast])
+
   useEffect(() => {
     return () => {
       toastTimeouts.current.forEach((timeoutId) => window.clearTimeout(timeoutId))
       toastTimeouts.current.clear()
     }
   }, [])
+
+  useEffect(() => {
+    return onToast((payload) => {
+      pushToastWithKind(payload.message, payload.kind ?? 'info')
+    })
+  }, [pushToastWithKind])
 
   useEffect(() => {
     if (isLoading) return
@@ -210,6 +231,13 @@ function AppContent() {
                 className="rounded-button bg-gray-100 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               >
                 Records
+              </button>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="rounded-button bg-gray-100 dark:bg-gray-700 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                Sign out
               </button>
               {inTournament && tournamentComplete && (
                 <>
@@ -468,6 +496,20 @@ function TournamentView({ testMode }: { testMode: boolean }) {
 }
 
 export default function App() {
+  const { session, isLoading } = useAuthSession()
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 dark:border-gray-700 border-t-neobank-lime"></div>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <AuthScreen />
+  }
+
   return (
     <TournamentProvider>
       <AppContent />

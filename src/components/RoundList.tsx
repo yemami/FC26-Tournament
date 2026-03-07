@@ -19,7 +19,7 @@ export function RoundList() {
   return (
     <div className="space-y-6">
       {roundIndices.map((r) => {
-        const roundMatches = rounds.get(r)!
+        const roundMatches = rounds.get(r)!.slice().sort((a, b) => a.id.localeCompare(b.id))
         const roundElimination = roundEliminations.find((e) => e.roundIndex === r)
         const eliminatedPlayer = roundElimination ? playerMap.get(roundElimination.eliminatedPlayerId) : null
         
