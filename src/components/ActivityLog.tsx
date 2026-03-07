@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTournament } from '../context/TournamentContext'
-import { getActivityLog, getActorLabel, setActorLabel } from '../lib/supabaseService'
+import { supabase } from '../lib/supabase'
+import { getActiveTournamentId, getActivityLog, getActorLabel, setActorLabel } from '../lib/supabaseService'
 import { describeActivity, type ActivityLogEntry } from '../lib/activity'
 
 interface ActivityLogProps {
@@ -23,6 +24,44 @@ export function ActivityLog({ isOpen, onClose, hasOngoingGame = false, onGoToOng
     if (!isOpen) return
     setActorLabelInput(getActorLabel())
     void loadHistory()
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    let channel: ReturnType<typeof supabase.channel> | null = null
+
+    ;(async () => {
+      const tournamentId = await getActiveTournamentId()
+      if (cancelled || !tournamentId) return
+
+      channel = supabase
+        .channel(`activity-log-modal-${tournamentId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'activity_log',
+            filter: `tournament_id=eq.${tournamentId}`,
+          },
+          (payload) => {
+            const entry = payload.new as ActivityLogEntry
+            setHistory((prev) => {
+              if (prev.some((item) => item.id === entry.id)) return prev
+              return [entry, ...prev]
+            })
+          }
+        )
+        .subscribe()
+    })()
+
+    return () => {
+      cancelled = true
+      if (channel) {
+        void supabase.removeChannel(channel)
+      }
+    }
   }, [isOpen])
 
   const loadHistory = async () => {
@@ -61,6 +100,13 @@ export function ActivityLog({ isOpen, onClose, hasOngoingGame = false, onGoToOng
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 p-5">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Activity Log</h2>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={loadHistory}
+              className="rounded-button bg-gray-100 dark:bg-gray-700 px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            >
+              Refresh
+            </button>
             {hasOngoingGame && onGoToOngoingGame && (
               <button
                 type="button"
