@@ -8,6 +8,8 @@ export function ResetPasswordScreen() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [sessionReady, setSessionReady] = useState(false)
+  const [resetToken, setResetToken] = useState<string | null>(null)
 
   useEffect(() => {
     const run = async () => {
@@ -16,6 +18,17 @@ export function ResetPasswordScreen() {
       const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
       const accessToken = hashParams.get('access_token')
       const refreshToken = hashParams.get('refresh_token')
+      const token = code ?? accessToken ?? null
+      setResetToken(token)
+
+      if (token) {
+        const usedToken = sessionStorage.getItem('fc26-reset-used-token')
+        if (usedToken === token) {
+          setError('This reset link was already used. Request a new reset email.')
+          setSessionReady(false)
+          return
+        }
+      }
 
       if (accessToken && refreshToken) {
         const { error } = await supabase.auth.setSession({
@@ -24,21 +37,30 @@ export function ResetPasswordScreen() {
         })
         if (error) {
           setError(error.message)
+          setSessionReady(false)
           return
         }
         url.hash = ''
         window.history.replaceState({}, '', url.toString())
-        return
       }
 
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (error) {
           setError(error.message)
+          setSessionReady(false)
           return
         }
         url.searchParams.delete('code')
         window.history.replaceState({}, '', url.toString())
+      }
+
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        setSessionReady(true)
+      } else {
+        setSessionReady(false)
+        setError('Reset link expired. Request a new reset email.')
       }
     }
 
@@ -46,6 +68,10 @@ export function ResetPasswordScreen() {
   }, [])
 
   const handleUpdate = async () => {
+    if (!sessionReady) {
+      setError('Reset link expired. Request a new reset email.')
+      return
+    }
     if (!password) {
       setError('Enter a new password.')
       return
@@ -67,6 +93,10 @@ export function ResetPasswordScreen() {
         )
         return
       }
+      if (resetToken) {
+        sessionStorage.setItem('fc26-reset-used-token', resetToken)
+      }
+      await supabase.auth.signOut()
       setSuccess(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reset password.')
@@ -127,7 +157,7 @@ export function ResetPasswordScreen() {
         {success ? (
           <div className="space-y-3">
             <div className="rounded-card border border-neobank-lime/40 bg-neobank-lime/10 px-4 py-3 text-sm text-neobank-lime">
-              Password updated. Choose where to go next.
+              Password updated. Please sign in with your new password.
             </div>
             <button
               type="button"
@@ -135,21 +165,14 @@ export function ResetPasswordScreen() {
               disabled={isRedirecting}
               className="rounded-button bg-gray-900 dark:bg-gray-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 dark:hover:bg-gray-600 disabled:opacity-50"
             >
-              {isRedirecting ? 'Signing out...' : 'Back to sign in'}
-            </button>
-            <button
-              type="button"
-              onClick={handleGoToApp}
-              className="rounded-button bg-neobank-lime px-4 py-2.5 text-sm font-semibold text-white hover:bg-neobank-lime-dark"
-            >
-              Go to app
+              {isRedirecting ? 'Returning...' : 'Back to sign in'}
             </button>
           </div>
         ) : (
           <button
             type="button"
             onClick={handleUpdate}
-            disabled={isLoading}
+            disabled={isLoading || !sessionReady}
             className="rounded-button bg-neobank-lime px-4 py-2.5 text-sm font-semibold text-white hover:bg-neobank-lime-dark disabled:opacity-50"
           >
             {isLoading ? 'Updating...' : 'Update password'}
